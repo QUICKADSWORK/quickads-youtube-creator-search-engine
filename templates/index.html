@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Channel Scraper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-50 font-sans">
+    <div id="app" class="min-h-full">
+        <!-- Navigation -->
+        <nav class="gradient-bg shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h1 class="text-xl font-bold text-white">YouTube Scraper</h1>
+                            <p class="text-xs text-purple-200">Influencer Discovery Tool</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div id="scraper-status" class="flex items-center text-sm text-white">
+                            <span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span>
+                            <span>Ready</span>
+                        </div>
+                        <button onclick="showScrapeModal()" id="scrape-btn" 
+                            class="bg-white text-purple-600 px-4 py-2 rounded-lg font-semibold hover:bg-purple-50 transition-all flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Run Scraper
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Tab Navigation -->
+        <div class="bg-white border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <nav class="flex space-x-8" aria-label="Tabs">
+                    <button onclick="switchTab('dashboard')" id="tab-dashboard" 
+                        class="tab-btn border-purple-500 text-purple-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Dashboard
+                    </button>
+                    <button onclick="switchTab('channels')" id="tab-channels" 
+                        class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Channels
+                    </button>
+                    <button onclick="switchTab('queries')" id="tab-queries" 
+                        class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        Search Queries
+                    </button>
+                    <button onclick="switchTab('history')" id="tab-history" 
+                        class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        History
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Dashboard Tab -->
+            <div id="content-dashboard" class="tab-content">
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl shadow-sm p-6 card-hover transition-all">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-purple-100">
+                                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Total Channels</p>
+                                <p id="stat-channels" class="text-2xl font-bold text-gray-900">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6 card-hover transition-all">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-blue-100">
+                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Total Subscribers</p>
+                                <p id="stat-subscribers" class="text-2xl font-bold text-gray-900">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6 card-hover transition-all">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-green-100">
+                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Active Queries</p>
+                                <p id="stat-queries" class="text-2xl font-bold text-gray-900">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6 card-hover transition-all">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-yellow-100">
+                                <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500">Last Scrape</p>
+                                <p id="stat-last-scrape" class="text-sm font-bold text-gray-900">Never</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Country Distribution -->
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Channels by Country</h3>
+                        <div id="country-chart" class="space-y-3"></div>
+                    </div>
+                    <!-- Language Distribution -->
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Channels by Language</h3>
+                        <div id="language-chart" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Channels Tab -->
+            <div id="content-channels" class="tab-content hidden">
+                <!-- Search and Filters -->
+                <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <!-- Search -->
+                        <div class="relative">
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Search</label>
+                            <input type="text" id="channel-search" placeholder="Search channels..." 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                                oninput="debounce(loadChannels, 300)()">
+                            <svg class="absolute left-3 top-7 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        
+                        <!-- Country Filter -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Country</label>
+                            <select id="filter-country" onchange="loadChannels()" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                <option value="">All Countries</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Language Filter -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Language</label>
+                            <select id="filter-language" onchange="loadChannels()" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                <option value="">All Languages</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Subscribers Filter -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Subscribers</label>
+                            <select id="filter-subscribers" onchange="loadChannels()" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                                <option value="0-0">All</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Export Button -->
+                        <div class="flex items-end">
+                            <button onclick="exportChannels()" 
+                                class="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-all flex items-center justify-center text-sm">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                Export CSV
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Clear Filters -->
+                    <div class="flex justify-between items-center mt-3 pt-3 border-t">
+                        <span id="filter-count" class="text-sm text-gray-500">Showing 0 channels</span>
+                        <button onclick="clearFilters()" class="text-sm text-purple-600 hover:text-purple-800">
+                            Clear all filters
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Channel Cards -->
+                <div id="channels-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Channels will be loaded here -->
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination" class="flex justify-center items-center mt-8 space-x-2">
+                    <!-- Pagination buttons -->
+                </div>
+            </div>
+
+            <!-- Queries Tab -->
+            <div id="content-queries" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-semibold text-gray-900">Search Queries</h2>
+                    <button onclick="showAddQueryModal()" 
+                        class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Query
+                    </button>
+                </div>
+
+                <div id="queries-list" class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <!-- Queries will be loaded here -->
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="content-history" class="tab-content hidden">
+                <h2 class="text-xl font-semibold text-gray-900 mb-6">Scrape History</h2>
+                <div id="history-list" class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <!-- History will be loaded here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Run Scraper Modal -->
+    <div id="scrape-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 my-8 fade-in">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Run YouTube Scraper</h3>
+            
+            <div class="space-y-5">
+                <!-- Clear Previous Option -->
+                <div class="bg-purple-50 rounded-lg p-4">
+                    <div class="flex items-start">
+                        <input type="checkbox" id="clear-previous" 
+                            class="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded">
+                        <div class="ml-3">
+                            <label for="clear-previous" class="text-sm font-medium text-gray-900">
+                                Clear previous channels
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Remove all existing channels and only show newly scraped results
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Region/Country Filter -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Countries/Regions to Search
+                        <span class="text-xs text-gray-500 ml-1">(Select multiple)</span>
+                    </label>
+                    <div class="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="US" class="scrape-country h-4 w-4 text-purple-600 rounded" checked>
+                            <span>🇺🇸 USA</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="IN" class="scrape-country h-4 w-4 text-purple-600 rounded" checked>
+                            <span>🇮🇳 India</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="PE" class="scrape-country h-4 w-4 text-purple-600 rounded" checked>
+                            <span>🇵🇪 Peru</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="GB" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇬🇧 UK</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="CA" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇨🇦 Canada</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="AU" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇦🇺 Australia</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="DE" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇩🇪 Germany</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="FR" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇫🇷 France</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="BR" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇧🇷 Brazil</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="MX" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇲🇽 Mexico</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="ES" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇪🇸 Spain</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="IT" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇮🇹 Italy</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="NL" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇳🇱 Netherlands</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="PL" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇵🇱 Poland</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="AR" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇦🇷 Argentina</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="CO" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇨🇴 Colombia</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="CL" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇨🇱 Chile</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="JP" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇯🇵 Japan</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="KR" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇰🇷 S. Korea</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="ID" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇮🇩 Indonesia</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="PH" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇵🇭 Philippines</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="TH" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇹🇭 Thailand</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="VN" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇻🇳 Vietnam</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="MY" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇲🇾 Malaysia</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="SG" class="scrape-country h-4 w-4 text-purple-600 rounded">
+                            <span>🇸🇬 Singapore</span>
+                        </label>
+                    </div>
+                    <div class="flex space-x-2 mt-2">
+                        <button onclick="selectAllCountries()" class="text-xs text-purple-600 hover:underline">Select All</button>
+                        <span class="text-gray-300">|</span>
+                        <button onclick="deselectAllCountries()" class="text-xs text-purple-600 hover:underline">Deselect All</button>
+                    </div>
+                </div>
+                
+                <!-- Language Preference -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Language Preference
+                        <span class="text-xs text-gray-500 ml-1">(Channels in these languages)</span>
+                    </label>
+                    <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 p-2 border rounded-lg bg-gray-50">
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="english" class="scrape-language h-4 w-4 text-purple-600 rounded" checked>
+                            <span>English</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="hindi" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>Hindi</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="spanish" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>Spanish</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="portuguese" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>Portuguese</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="french" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>French</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="german" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>German</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="japanese" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>Japanese</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-sm cursor-pointer hover:bg-white p-1 rounded">
+                            <input type="checkbox" value="korean" class="scrape-language h-4 w-4 text-purple-600 rounded">
+                            <span>Korean</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Minimum Subscribers -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Minimum Subscribers
+                    </label>
+                    <select id="scrape-min-subs" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm">
+                        <option value="0">No minimum</option>
+                        <option value="100">100+ subscribers</option>
+                        <option value="1000" selected>1,000+ subscribers</option>
+                        <option value="5000">5,000+ subscribers</option>
+                        <option value="10000">10,000+ subscribers</option>
+                        <option value="50000">50,000+ subscribers</option>
+                        <option value="100000">100,000+ subscribers</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                <button type="button" onclick="hideScrapeModal()" 
+                    class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">
+                    Cancel
+                </button>
+                <button onclick="triggerScrape()" id="confirm-scrape-btn"
+                    class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Start Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Query Modal -->
+    <div id="query-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4 fade-in">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Add Search Query</h3>
+            <form id="query-form" onsubmit="saveQuery(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
+                        <input type="text" id="query-input" required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            placeholder="e.g., facebook ads tutorial">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Max Results</label>
+                            <input type="number" id="max-results-input" value="25" min="1" max="50"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                            <select id="region-input" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                <option value="US">United States</option>
+                                <option value="IN">India</option>
+                                <option value="PE">Peru</option>
+                                <option value="GB">United Kingdom</option>
+                                <option value="CA">Canada</option>
+                                <option value="AU">Australia</option>
+                                <option value="DE">Germany</option>
+                                <option value="BR">Brazil</option>
+                                <option value="MX">Mexico</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="hideQueryModal()" 
+                        class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all">
+                        Save Query
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg hidden fade-in">
+        <span id="toast-message">Message</span>
+    </div>
+
+    <script>
+        // State
+        let currentPage = 0;
+        const pageSize = 12;
+        let debounceTimer;
+        let filterOptions = null;
+
+        // Utility functions
+        function debounce(func, wait) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+        
+        // Load filter options
+        async function loadFilterOptions() {
+            try {
+                const response = await fetch('/api/filters');
+                filterOptions = await response.json();
+                
+                // Populate country dropdown
+                const countrySelect = document.getElementById('filter-country');
+                countrySelect.innerHTML = '<option value="">All Countries</option>' +
+                    filterOptions.countries.map(c => 
+                        `<option value="${c.code}">${c.name}</option>`
+                    ).join('');
+                
+                // Populate language dropdown
+                const languageSelect = document.getElementById('filter-language');
+                languageSelect.innerHTML = '<option value="">All Languages</option>' +
+                    filterOptions.languages.map(l => 
+                        `<option value="${l}">${l.charAt(0).toUpperCase() + l.slice(1)}</option>`
+                    ).join('');
+                
+                // Populate subscriber dropdown
+                const subsSelect = document.getElementById('filter-subscribers');
+                subsSelect.innerHTML = filterOptions.subscriber_ranges.map(r => 
+                    `<option value="${r.min}-${r.max}">${r.label}</option>`
+                ).join('');
+            } catch (error) {
+                console.error('Error loading filter options:', error);
+            }
+        }
+        
+        function getFilterParams() {
+            const search = document.getElementById('channel-search')?.value || '';
+            const country = document.getElementById('filter-country')?.value || '';
+            const language = document.getElementById('filter-language')?.value || '';
+            const subsValue = document.getElementById('filter-subscribers')?.value || '0-0';
+            const [minSubs, maxSubs] = subsValue.split('-').map(Number);
+            
+            return { search, country, language, minSubs, maxSubs };
+        }
+        
+        function clearFilters() {
+            document.getElementById('channel-search').value = '';
+            document.getElementById('filter-country').value = '';
+            document.getElementById('filter-language').value = '';
+            document.getElementById('filter-subscribers').value = '0-0';
+            currentPage = 0;
+            loadChannels();
+        }
+        
+        // Scrape modal functions
+        function showScrapeModal() {
+            document.getElementById('scrape-modal').classList.remove('hidden');
+            document.getElementById('scrape-modal').classList.add('flex');
+        }
+        
+        function hideScrapeModal() {
+            document.getElementById('scrape-modal').classList.add('hidden');
+            document.getElementById('scrape-modal').classList.remove('flex');
+            document.getElementById('clear-previous').checked = false;
+        }
+        
+        function selectAllCountries() {
+            document.querySelectorAll('.scrape-country').forEach(cb => cb.checked = true);
+        }
+        
+        function deselectAllCountries() {
+            document.querySelectorAll('.scrape-country').forEach(cb => cb.checked = false);
+        }
+        
+        function getScrapeFilters() {
+            const countries = Array.from(document.querySelectorAll('.scrape-country:checked')).map(cb => cb.value);
+            const languages = Array.from(document.querySelectorAll('.scrape-language:checked')).map(cb => cb.value);
+            const minSubs = parseInt(document.getElementById('scrape-min-subs').value) || 0;
+            return { countries, languages, minSubs };
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            toastMessage.textContent = message;
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg fade-in ${
+                type === 'error' ? 'bg-red-600' : 'bg-green-600'
+            } text-white`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-purple-500', 'text-purple-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            document.getElementById(`tab-${tabName}`).classList.add('border-purple-500', 'text-purple-600');
+            document.getElementById(`tab-${tabName}`).classList.remove('border-transparent', 'text-gray-500');
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+
+            // Load data for tab
+            if (tabName === 'dashboard') loadStats();
+            if (tabName === 'channels') loadChannels();
+            if (tabName === 'queries') loadQueries();
+            if (tabName === 'history') loadHistory();
+        }
+
+        // Dashboard
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+
+                document.getElementById('stat-channels').textContent = formatNumber(stats.total_channels);
+                document.getElementById('stat-subscribers').textContent = formatNumber(stats.total_subscribers);
+                document.getElementById('stat-queries').textContent = stats.active_queries;
+                document.getElementById('stat-last-scrape').textContent = stats.last_scrape 
+                    ? formatDate(stats.last_scrape.completed_at || stats.last_scrape.started_at)
+                    : 'Never';
+
+                // Country chart
+                const countryChart = document.getElementById('country-chart');
+                const maxCountry = Math.max(...stats.by_country.map(c => c.count), 1);
+                countryChart.innerHTML = stats.by_country.slice(0, 5).map(c => `
+                    <div class="flex items-center">
+                        <span class="w-20 text-sm text-gray-600">${c.country || 'Unknown'}</span>
+                        <div class="flex-1 bg-gray-200 rounded-full h-4 mx-3">
+                            <div class="bg-purple-600 h-4 rounded-full" style="width: ${(c.count / maxCountry * 100)}%"></div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-900">${c.count}</span>
+                    </div>
+                `).join('') || '<p class="text-gray-500 text-sm">No data yet</p>';
+
+                // Language chart
+                const languageChart = document.getElementById('language-chart');
+                const maxLang = Math.max(...stats.by_language.map(l => l.count), 1);
+                languageChart.innerHTML = stats.by_language.map(l => `
+                    <div class="flex items-center">
+                        <span class="w-20 text-sm text-gray-600 capitalize">${l.language}</span>
+                        <div class="flex-1 bg-gray-200 rounded-full h-4 mx-3">
+                            <div class="bg-blue-600 h-4 rounded-full" style="width: ${(l.count / maxLang * 100)}%"></div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-900">${l.count}</span>
+                    </div>
+                `).join('') || '<p class="text-gray-500 text-sm">No data yet</p>';
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Channels
+        async function loadChannels() {
+            const { search, country, language, minSubs, maxSubs } = getFilterParams();
+            try {
+                const params = new URLSearchParams({
+                    limit: pageSize,
+                    offset: currentPage * pageSize,
+                    search: search,
+                    country: country,
+                    language: language,
+                    min_subs: minSubs,
+                    max_subs: maxSubs
+                });
+                
+                const response = await fetch(`/api/channels?${params}`);
+                const data = await response.json();
+                
+                // Update filter count
+                document.getElementById('filter-count').textContent = `Showing ${data.channels.length} of ${data.total} channels`;
+
+                const grid = document.getElementById('channels-grid');
+                if (data.channels.length === 0) {
+                    grid.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <h3 class="mt-2 text-sm font-medium text-gray-900">No channels found</h3>
+                            <p class="mt-1 text-sm text-gray-500">Run the scraper to discover YouTube channels.</p>
+                        </div>
+                    `;
+                } else {
+                    grid.innerHTML = data.channels.map(channel => `
+                        <div class="bg-white rounded-xl shadow-sm p-5 card-hover transition-all fade-in">
+                            <div class="flex items-start space-x-4">
+                                <img src="${channel.thumbnail_url || 'https://via.placeholder.com/80'}" 
+                                    alt="${channel.channel_title}" 
+                                    class="w-16 h-16 rounded-full object-cover">
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="text-sm font-semibold text-gray-900 truncate">${channel.channel_title}</h3>
+                                    <p class="text-xs text-gray-500 mt-1">${channel.country || 'Unknown'} • ${channel.detected_language || 'Unknown'}</p>
+                                </div>
+                                <button onclick="deleteChannel('${channel.channel_id}')" 
+                                    class="text-gray-400 hover:text-red-500 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-600 mt-3 line-clamp-2">${channel.description?.substring(0, 100) || 'No description'}...</p>
+                            <div class="flex items-center justify-between mt-4 pt-4 border-t">
+                                <div class="flex space-x-4 text-xs text-gray-500">
+                                    <span><strong class="text-gray-900">${formatNumber(channel.subscribers || 0)}</strong> subs</span>
+                                    <span><strong class="text-gray-900">${formatNumber(channel.video_count || 0)}</strong> videos</span>
+                                </div>
+                                <a href="${channel.channel_url}" target="_blank" 
+                                    class="text-purple-600 hover:text-purple-800 text-xs font-medium">
+                                    View →
+                                </a>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // Pagination
+                const totalPages = Math.ceil(data.total / pageSize);
+                const pagination = document.getElementById('pagination');
+                if (totalPages > 1) {
+                    pagination.innerHTML = `
+                        <button onclick="changePage(-1)" ${currentPage === 0 ? 'disabled' : ''} 
+                            class="px-3 py-2 rounded-lg bg-white border ${currentPage === 0 ? 'text-gray-300' : 'text-gray-700 hover:bg-gray-50'}">
+                            Previous
+                        </button>
+                        <span class="text-sm text-gray-600">Page ${currentPage + 1} of ${totalPages}</span>
+                        <button onclick="changePage(1)" ${currentPage >= totalPages - 1 ? 'disabled' : ''} 
+                            class="px-3 py-2 rounded-lg bg-white border ${currentPage >= totalPages - 1 ? 'text-gray-300' : 'text-gray-700 hover:bg-gray-50'}">
+                            Next
+                        </button>
+                    `;
+                } else {
+                    pagination.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Error loading channels:', error);
+            }
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            loadChannels();
+        }
+
+        async function deleteChannel(channelId) {
+            if (!confirm('Are you sure you want to delete this channel?')) return;
+            try {
+                await fetch(`/api/channels/${channelId}`, { method: 'DELETE' });
+                showToast('Channel deleted');
+                loadChannels();
+                loadStats();
+            } catch (error) {
+                showToast('Error deleting channel', 'error');
+            }
+        }
+
+        async function exportChannels() {
+            try {
+                const response = await fetch('/api/export?format=csv');
+                const data = await response.json();
+                
+                const blob = new Blob([data.csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `youtube_channels_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                
+                showToast(`Exported ${data.count} channels`);
+            } catch (error) {
+                showToast('Error exporting channels', 'error');
+            }
+        }
+
+        // Queries
+        async function loadQueries() {
+            try {
+                const response = await fetch('/api/queries');
+                const queries = await response.json();
+
+                const list = document.getElementById('queries-list');
+                if (queries.length === 0) {
+                    list.innerHTML = '<p class="p-6 text-gray-500 text-center">No search queries configured</p>';
+                } else {
+                    list.innerHTML = `
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Query</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Results</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Region</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${queries.map(q => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${q.query}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${q.max_results}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${q.region_code}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <button onclick="toggleQuery(${q.id}, ${!q.is_active})" 
+                                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${q.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                                ${q.is_active ? 'Active' : 'Inactive'}
+                                            </button>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                            <button onclick="deleteQuery(${q.id})" class="text-red-600 hover:text-red-900">Delete</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading queries:', error);
+            }
+        }
+
+        function showAddQueryModal() {
+            document.getElementById('query-modal').classList.remove('hidden');
+            document.getElementById('query-modal').classList.add('flex');
+        }
+
+        function hideQueryModal() {
+            document.getElementById('query-modal').classList.add('hidden');
+            document.getElementById('query-modal').classList.remove('flex');
+            document.getElementById('query-form').reset();
+        }
+
+        async function saveQuery(event) {
+            event.preventDefault();
+            try {
+                await fetch('/api/queries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: document.getElementById('query-input').value,
+                        max_results: parseInt(document.getElementById('max-results-input').value),
+                        region_code: document.getElementById('region-input').value
+                    })
+                });
+                hideQueryModal();
+                showToast('Query added');
+                loadQueries();
+                loadStats();
+            } catch (error) {
+                showToast('Error adding query', 'error');
+            }
+        }
+
+        async function toggleQuery(id, isActive) {
+            try {
+                await fetch(`/api/queries/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                loadQueries();
+            } catch (error) {
+                showToast('Error updating query', 'error');
+            }
+        }
+
+        async function deleteQuery(id) {
+            if (!confirm('Are you sure you want to delete this query?')) return;
+            try {
+                await fetch(`/api/queries/${id}`, { method: 'DELETE' });
+                showToast('Query deleted');
+                loadQueries();
+                loadStats();
+            } catch (error) {
+                showToast('Error deleting query', 'error');
+            }
+        }
+
+        // History
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history');
+                const history = await response.json();
+
+                const list = document.getElementById('history-list');
+                if (history.length === 0) {
+                    list.innerHTML = '<p class="p-6 text-gray-500 text-center">No scrape history yet</p>';
+                } else {
+                    list.innerHTML = `
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Found</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${history.map(h => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatDate(h.started_at)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(h.completed_at)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${h.channels_found}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${h.channels_added}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                h.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                h.status === 'running' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-red-100 text-red-800'
+                                            }">
+                                                ${h.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        // Scraper
+        async function triggerScrape() {
+            const btn = document.getElementById('scrape-btn');
+            const confirmBtn = document.getElementById('confirm-scrape-btn');
+            const status = document.getElementById('scraper-status');
+            const clearPrevious = document.getElementById('clear-previous').checked;
+            const filters = getScrapeFilters();
+            
+            // Validate at least one country selected
+            if (filters.countries.length === 0) {
+                showToast('Please select at least one country', 'error');
+                return;
+            }
+            
+            // Hide modal
+            hideScrapeModal();
+            
+            btn.disabled = true;
+            confirmBtn.disabled = true;
+            btn.innerHTML = `
+                <svg class="w-4 h-4 mr-2 spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Running...
+            `;
+            status.innerHTML = '<span class="w-2 h-2 rounded-full bg-yellow-400 mr-2 pulse-dot"></span><span>Scraping...</span>';
+
+            try {
+                const response = await fetch('/api/scrape', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        clear_previous: clearPrevious,
+                        countries: filters.countries,
+                        languages: filters.languages,
+                        min_subscribers: filters.minSubs
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message);
+                } else {
+                    showToast(result.message, 'error');
+                }
+                
+                // Refresh data
+                loadStats();
+                if (!document.getElementById('content-channels').classList.contains('hidden')) {
+                    loadChannels();
+                }
+                if (!document.getElementById('content-history').classList.contains('hidden')) {
+                    loadHistory();
+                }
+            } catch (error) {
+                showToast('Error running scraper', 'error');
+            } finally {
+                btn.disabled = false;
+                confirmBtn.disabled = false;
+                btn.innerHTML = `
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Run Scraper
+                `;
+                status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span><span>Ready</span>';
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadFilterOptions();
+        });
+    </script>
+</body>
+</html>
