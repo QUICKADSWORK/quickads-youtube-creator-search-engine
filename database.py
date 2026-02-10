@@ -323,34 +323,54 @@ def reset_search_queries_to_creator_focused():
         # Clear existing queries
         cursor.execute("DELETE FROM search_queries")
         
-        # Add creator-focused queries
+        # Add creator-focused queries - targeting INDIVIDUALS not brands
         creator_queries = [
-            # Personal success stories (individuals sharing their journey)
-            ("how I made money with facebook ads", 50, "US"),
-            ("my dropshipping journey 2024", 30, "US"),
-            ("how I grew my ecommerce store", 30, "US"),
-            ("my marketing agency story", 25, "US"),
-            ("i quit my job to start business", 25, "US"),
+            # ===== PERSONAL JOURNEY STORIES =====
+            ("how I made my first $10k online", 30, "US"),
+            ("my journey to 100k subscribers", 25, "US"),
+            ("I quit my 9 to 5 job", 25, "US"),
+            ("my first year as entrepreneur", 25, "US"),
+            ("how I started my online business from scratch", 25, "US"),
             
-            # Tutorial creators (individuals teaching)
-            ("facebook ads tutorial for beginners", 30, "US"),
-            ("meta ads case study real results", 25, "US"),
-            ("shopify store review honest", 25, "US"),
-            ("tiktok ads strategy 2024", 25, "US"),
+            # ===== INCOME/RESULTS REPORTS =====
+            ("income report youtuber", 25, "US"),
+            ("how much I made this month", 25, "US"),
+            ("revealing my earnings", 25, "US"),
+            ("my affiliate marketing income", 25, "US"),
+            ("dropshipping income proof", 25, "US"),
             
-            # Entrepreneur/Side hustle creators
-            ("day in my life entrepreneur", 25, "US"),
-            ("side hustle ideas that work", 25, "US"),
-            ("passive income online business", 25, "US"),
-            ("affiliate marketing income report", 25, "US"),
-            ("make money online real results", 25, "US"),
+            # ===== PERSONAL ADS/MARKETING CONTENT =====
+            ("I spent $1000 on facebook ads", 25, "US"),
+            ("my facebook ads results", 25, "US"),
+            ("testing tiktok ads for my store", 25, "US"),
+            ("my meta ads strategy", 25, "US"),
+            ("I tried google ads for 30 days", 25, "US"),
             
-            # Niche marketing creators
-            ("amazon fba journey", 25, "US"),
-            ("print on demand tutorial", 25, "US"),
-            ("email marketing tips small business", 25, "US"),
-            ("instagram growth strategy creator", 25, "US"),
-            ("youtube automation channel", 25, "US"),
+            # ===== ECOMMERCE CREATOR STORIES =====
+            ("my shopify store journey", 25, "US"),
+            ("I started dropshipping with $0", 25, "US"),
+            ("my etsy shop income", 25, "US"),
+            ("amazon fba beginner journey", 25, "US"),
+            ("print on demand real results", 25, "US"),
+            
+            # ===== SIDE HUSTLE/ENTREPRENEUR =====
+            ("best side hustles I actually tried", 25, "US"),
+            ("how I make passive income", 25, "US"),
+            ("day in my life online entrepreneur", 25, "US"),
+            ("work from home business ideas that work", 25, "US"),
+            ("my online business income streams", 25, "US"),
+            
+            # ===== YOUTUBE/CONTENT CREATOR GROWTH =====
+            ("how I grew my youtube channel", 25, "US"),
+            ("my content creation journey", 25, "US"),
+            ("youtube monetization tips from experience", 25, "US"),
+            ("growing on social media as beginner", 25, "US"),
+            
+            # ===== NICHE SPECIFIC CREATORS =====
+            ("real estate agent marketing tips", 25, "US"),
+            ("fitness influencer income", 25, "US"),
+            ("travel youtuber behind the scenes", 25, "US"),
+            ("food blogger income report", 25, "US"),
         ]
         
         cursor.executemany(

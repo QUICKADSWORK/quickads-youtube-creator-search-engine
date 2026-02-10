@@ -218,6 +218,53 @@ async def reset_queries():
     return {"success": True, "message": f"Reset to {count} creator-focused queries"}
 
 
+@app.delete("/api/queries")
+async def clear_all_queries():
+    """Clear all search queries."""
+    with db.get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM search_queries")
+        count = cursor.rowcount
+        conn.commit()
+    return {"success": True, "cleared": count, "message": f"Cleared {count} queries"}
+
+
+class BulkQueriesRequest(BaseModel):
+    queries: str  # Newline-separated queries
+    max_results: int = 25
+    region_code: str = "US"
+    clear_existing: bool = False
+
+
+@app.post("/api/queries/bulk")
+async def add_bulk_queries(request: BulkQueriesRequest):
+    """Add multiple queries at once (newline-separated)."""
+    # Parse queries from text
+    lines = request.queries.strip().split("\n")
+    queries = [line.strip() for line in lines if line.strip()]
+    
+    if not queries:
+        return {"success": False, "message": "No queries provided"}
+    
+    # Clear existing if requested
+    if request.clear_existing:
+        with db.get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM search_queries")
+            conn.commit()
+    
+    # Add each query
+    added = 0
+    for query in queries:
+        try:
+            db.add_search_query(query, request.max_results, request.region_code)
+            added += 1
+        except Exception:
+            pass  # Skip duplicates or errors
+    
+    return {"success": True, "added": added, "message": f"Added {added} queries"}
+
+
 class ScrapeRequest(BaseModel):
     clear_previous: bool = False
     countries: list = ["US"]

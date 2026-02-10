@@ -27,28 +27,46 @@ HINDI_SIGNALS = [
 BRAND_INDICATORS = [
     # Company suffixes
     "official", "inc", "llc", "ltd", "corp", "corporation", "company",
-    "™", "®", "©",
+    "™", "®", "©", "verified",
     # Major brands/platforms to exclude
     "coursera", "udemy", "udacity", "linkedin learning", "skillshare",
     "google", "microsoft", "amazon", "meta", "facebook", "hubspot",
     "shopify", "wix", "squarespace", "godaddy", "hostinger",
     "semrush", "ahrefs", "moz", "mailchimp", "salesforce",
-    "adobe", "canva", "figma", "notion",
+    "adobe", "canva", "figma", "notion", "zapier",
     # Education platforms
-    "khan academy", "ted-ed", "ted talks", "great courses",
-    "masterclass", "brilliant", "codecademy", "freecodecamp",
+    "khan academy", "ted-ed", "ted talks", "great courses", "the great courses",
+    "masterclass", "brilliant", "codecademy", "freecodecamp", "pluralsight",
+    "datacamp", "treehouse", "edx", "futurelearn",
     # News/Media
     "news", "times", "post", "journal", "magazine", "media group",
-    "network", "studios", "productions", "entertainment",
+    "network", "studios", "productions", "entertainment", "tv", "television",
     # Generic brand patterns
     "headquarters", "hq", "global", "worldwide", "international",
+    "institute", "academy", "university", "college", "school of",
+    # Tech companies
+    "apple", "samsung", "intel", "nvidia", "ibm", "oracle", "cisco",
+    "stripe", "paypal", "square", "intuit", "quickbooks",
+    # Social platforms
+    "twitter", "instagram", "tiktok", "snapchat", "pinterest", "reddit",
+    # Agencies (usually not individual creators)
+    "agency", "agencies", "marketing agency", "digital agency",
+    "consulting", "consultancy", "solutions",
 ]
 
 # Patterns that suggest individual creators (GOOD)
 CREATOR_INDICATORS = [
-    "with me", "my journey", "how i", "i made", "i earned",
-    "tips from", "secrets", "honest review", "real talk",
-    "day in my life", "behind the scenes", "entrepreneur",
+    "with me", "my journey", "how i", "i made", "i earned", "i started",
+    "tips from", "secrets", "honest review", "real talk", "no bs",
+    "day in my life", "behind the scenes", "entrepreneur", "solopreneur",
+    "quit my job", "left my 9-5", "full time", "side hustle",
+    "income report", "how much i make", "revealing", "the truth about",
+    "beginner friendly", "step by step", "complete guide",
+]
+
+# Strong personal name patterns (indicates individual)
+PERSONAL_NAME_PATTERNS = [
+    " with ", " by ", "'s ", "ith ", # "Marketing with John", "Ads by Sarah"
 ]
 
 
@@ -57,28 +75,42 @@ def is_likely_brand_channel(channel: Dict) -> bool:
     Check if a channel is likely an official brand/company channel.
     Returns True if it should be EXCLUDED.
     """
-    title = channel.get("channel_title", "").lower()
+    title = channel.get("channel_title", "").lower().strip()
     description = channel.get("description", "").lower()
+    subs = channel.get("subscribers", 0)
+    video_count = channel.get("video_count", 0)
     
     # Check for brand indicators in title
     for indicator in BRAND_INDICATORS:
         if indicator in title:
             return True
     
-    # Channels with very high subscribers (>5M) are usually brands
-    subs = channel.get("subscribers", 0)
-    if subs > 5000000:
+    # Channels with very high subscribers (>3M) are usually brands
+    if subs > 3000000:
+        return True
+    
+    # Very few videos but high subs = likely brand/celebrity
+    if subs > 500000 and video_count < 50:
         return True
     
     # Check description for corporate language
     corporate_phrases = [
-        "we are a", "our company", "our team", "our mission",
-        "founded in", "established in", "leading provider",
-        "official channel", "official youtube", "subscribe to our"
+        "we are a", "our company", "our team", "our mission", "our vision",
+        "founded in", "established in", "leading provider", "industry leader",
+        "official channel", "official youtube", "subscribe to our",
+        "customer support", "contact us at", "visit our website",
+        "terms and conditions", "privacy policy", "all rights reserved",
+        "trusted by", "used by millions", "join millions",
+        "award-winning", "award winning", "featured in", "as seen on",
     ]
     for phrase in corporate_phrases:
         if phrase in description:
             return True
+    
+    # Single word channel names that are likely brands
+    if len(title.split()) == 1 and subs > 100000:
+        # Single word + high subs = probably a brand
+        return True
     
     return False
 
@@ -91,28 +123,107 @@ def is_likely_creator(channel: Dict) -> bool:
     title = channel.get("channel_title", "").lower()
     description = channel.get("description", "").lower()
     subs = channel.get("subscribers", 0)
+    video_count = channel.get("video_count", 0)
     
-    # Sweet spot for influencers: 5K - 2M subscribers
-    if subs < 1000 or subs > 2000000:
+    # Must have reasonable subscriber count for influencer marketing
+    if subs < 1000:
         return False
     
-    # Check for creator indicators
+    # Must have some content
+    if video_count < 10:
+        return False
+    
+    # Strong creator signals - if found, definitely include
+    strong_signals = 0
+    
+    # Check for creator indicators in description
     for indicator in CREATOR_INDICATORS:
         if indicator in description:
-            return True
+            strong_signals += 1
     
     # Personal pronouns in description suggest individual creator
-    personal_phrases = ["i am", "i'm", "my name", "hey guys", "hey everyone", 
-                        "welcome to my", "i help", "i teach", "i show"]
+    personal_phrases = [
+        "i am", "i'm", "my name is", "hey guys", "hey everyone", "what's up",
+        "welcome to my", "i help", "i teach", "i show", "i create",
+        "follow me", "join me", "let me", "i'll show", "i will show",
+        "my goal", "my mission", "i believe", "i love", "i enjoy",
+        "contact me", "email me", "dm me", "reach out to me",
+        "thanks for", "thank you for watching", "don't forget to",
+    ]
     for phrase in personal_phrases:
         if phrase in description:
-            return True
+            strong_signals += 1
     
-    # If no strong signals but reasonable sub count, include it
+    # Check for personal name patterns in title
+    for pattern in PERSONAL_NAME_PATTERNS:
+        if pattern in title:
+            strong_signals += 1
+    
+    # If strong signals found, include
+    if strong_signals >= 1:
+        return True
+    
+    # Sweet spot range: likely individual creators
+    # 5K-500K is the sweet spot for approachable influencers
     if 5000 <= subs <= 500000:
         return True
     
-    return True  # Default include if passed brand check
+    # 500K-2M with good video count, might be creator
+    if 500000 < subs <= 2000000 and video_count > 100:
+        return True
+    
+    return False
+
+
+def calculate_creator_score(channel: Dict) -> int:
+    """
+    Calculate a score for how likely this is a genuine creator.
+    Higher score = better for influencer marketing.
+    """
+    score = 50  # Base score
+    
+    title = channel.get("channel_title", "").lower()
+    description = channel.get("description", "").lower()
+    subs = channel.get("subscribers", 0)
+    video_count = channel.get("video_count", 0)
+    
+    # Subscriber sweet spots
+    if 10000 <= subs <= 100000:
+        score += 20  # Micro-influencers - best engagement
+    elif 100000 < subs <= 500000:
+        score += 15  # Mid-tier - good reach
+    elif 5000 <= subs < 10000:
+        score += 10  # Nano-influencers
+    elif subs > 1000000:
+        score -= 10  # Very large - might be brand
+    
+    # Video count indicates active creator
+    if video_count > 200:
+        score += 15
+    elif video_count > 100:
+        score += 10
+    elif video_count > 50:
+        score += 5
+    elif video_count < 20:
+        score -= 10
+    
+    # Personal indicators
+    personal_words = ["i ", "my ", "me ", "i'm", "i've"]
+    for word in personal_words:
+        if word in description[:200]:  # Check start of description
+            score += 5
+    
+    # Creator-focused content signals
+    for indicator in CREATOR_INDICATORS:
+        if indicator in description:
+            score += 3
+    
+    # Negative signals
+    for indicator in BRAND_INDICATORS:
+        if indicator in title:
+            score -= 20
+    
+    return max(0, min(100, score))  # Cap between 0-100
 
 
 def search_youtube_channels(query: str, max_results: int = 25, region_code: str = "US") -> List[str]:

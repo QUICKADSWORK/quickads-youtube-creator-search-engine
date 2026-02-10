@@ -261,15 +261,49 @@
 
             <!-- Queries Tab -->
             <div id="content-queries" class="tab-content hidden">
-                <div class="flex justify-between items-center mb-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                     <h2 class="text-xl font-semibold text-gray-900">Search Queries</h2>
-                    <button onclick="showAddQueryModal()" 
-                        class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all flex items-center">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        Add Query
-                    </button>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="showBulkQueryModal()" 
+                            class="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-all flex items-center text-sm">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                            </svg>
+                            Bulk Upload
+                        </button>
+                        <button onclick="resetQueries()" 
+                            class="bg-yellow-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-yellow-600 transition-all flex items-center text-sm">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Reset to Defaults
+                        </button>
+                        <button onclick="clearAllQueries()" 
+                            class="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-600 transition-all flex items-center text-sm">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            Clear All
+                        </button>
+                        <button onclick="showAddQueryModal()" 
+                            class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all flex items-center text-sm">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Add Single
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Tips for better queries -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <h3 class="font-medium text-blue-900 mb-2">Tips for Finding Real Creators:</h3>
+                    <ul class="text-sm text-blue-800 space-y-1">
+                        <li>• Use phrases like "how I made", "my journey", "my story" to find personal content</li>
+                        <li>• Add "2024" or "2025" to get active creators</li>
+                        <li>• Try niche-specific terms: "dropshipping journey", "affiliate income report"</li>
+                        <li>• Avoid brand names like "Shopify tutorial" - try "my Shopify store" instead</li>
+                    </ul>
                 </div>
 
                 <div id="queries-list" class="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -509,7 +543,7 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
                         <input type="text" id="query-input" required
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="e.g., facebook ads tutorial">
+                            placeholder="e.g., how I made money with facebook ads">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -545,6 +579,84 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Bulk Query Modal -->
+    <div id="bulk-query-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 my-8 fade-in">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Bulk Upload Queries</h3>
+            <p class="text-sm text-gray-500 mb-4">Paste multiple search queries, one per line</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Search Queries (one per line)</label>
+                    <textarea id="bulk-queries-input" rows="12"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm"
+                        placeholder="how I made money with facebook ads
+my dropshipping journey 2024
+how I grew my ecommerce store
+facebook ads case study real results
+my first $10k month online
+side hustle income report
+affiliate marketing for beginners
+tiktok ads strategy that works
+amazon fba journey 2024
+print on demand success story"></textarea>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Max Results per Query</label>
+                        <input type="number" id="bulk-max-results" value="25" min="1" max="50"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Default Region</label>
+                        <select id="bulk-region" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="US">United States</option>
+                            <option value="IN">India</option>
+                            <option value="PE">Peru</option>
+                            <option value="GB">United Kingdom</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="flex items-center">
+                    <input type="checkbox" id="bulk-clear-existing" 
+                        class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded">
+                    <label for="bulk-clear-existing" class="ml-2 text-sm text-gray-700">
+                        Replace all existing queries (clear first)
+                    </label>
+                </div>
+                
+                <!-- Example queries -->
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs font-medium text-gray-600 mb-2">Example creator-focused queries:</p>
+                    <div class="flex flex-wrap gap-1">
+                        <button onclick="addExampleQuery('how I made $10k dropshipping')" class="text-xs bg-white px-2 py-1 rounded border hover:bg-purple-50">how I made $10k dropshipping</button>
+                        <button onclick="addExampleQuery('my journey to 100k subscribers')" class="text-xs bg-white px-2 py-1 rounded border hover:bg-purple-50">my journey to 100k subscribers</button>
+                        <button onclick="addExampleQuery('quit my job for youtube')" class="text-xs bg-white px-2 py-1 rounded border hover:bg-purple-50">quit my job for youtube</button>
+                        <button onclick="addExampleQuery('facebook ads real results 2024')" class="text-xs bg-white px-2 py-1 rounded border hover:bg-purple-50">facebook ads real results 2024</button>
+                        <button onclick="addExampleQuery('passive income ideas that work')" class="text-xs bg-white px-2 py-1 rounded border hover:bg-purple-50">passive income ideas that work</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center mt-6 pt-4 border-t">
+                <span id="bulk-query-count" class="text-sm text-gray-500">0 queries</span>
+                <div class="flex space-x-3">
+                    <button type="button" onclick="hideBulkQueryModal()" 
+                        class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all">
+                        Cancel
+                    </button>
+                    <button onclick="saveBulkQueries()" 
+                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all">
+                        Upload All Queries
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -912,6 +1024,106 @@
             document.getElementById('query-modal').classList.remove('flex');
             document.getElementById('query-form').reset();
         }
+        
+        // Bulk Query Modal
+        function showBulkQueryModal() {
+            document.getElementById('bulk-query-modal').classList.remove('hidden');
+            document.getElementById('bulk-query-modal').classList.add('flex');
+            updateBulkQueryCount();
+        }
+        
+        function hideBulkQueryModal() {
+            document.getElementById('bulk-query-modal').classList.add('hidden');
+            document.getElementById('bulk-query-modal').classList.remove('flex');
+        }
+        
+        function updateBulkQueryCount() {
+            const text = document.getElementById('bulk-queries-input').value;
+            const lines = text.split('\n').filter(l => l.trim());
+            document.getElementById('bulk-query-count').textContent = `${lines.length} queries`;
+        }
+        
+        function addExampleQuery(query) {
+            const textarea = document.getElementById('bulk-queries-input');
+            if (textarea.value && !textarea.value.endsWith('\n')) {
+                textarea.value += '\n';
+            }
+            textarea.value += query;
+            updateBulkQueryCount();
+        }
+        
+        async function saveBulkQueries() {
+            const queries = document.getElementById('bulk-queries-input').value;
+            const maxResults = parseInt(document.getElementById('bulk-max-results').value);
+            const regionCode = document.getElementById('bulk-region').value;
+            const clearExisting = document.getElementById('bulk-clear-existing').checked;
+            
+            if (!queries.trim()) {
+                showToast('Please enter at least one query', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/queries/bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queries: queries,
+                        max_results: maxResults,
+                        region_code: regionCode,
+                        clear_existing: clearExisting
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message);
+                    hideBulkQueryModal();
+                    loadQueries();
+                    loadStats();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Error uploading queries', 'error');
+            }
+        }
+        
+        async function resetQueries() {
+            if (!confirm('Reset all queries to creator-focused defaults?')) return;
+            
+            try {
+                const response = await fetch('/api/queries/reset', { method: 'POST' });
+                const result = await response.json();
+                showToast(result.message);
+                loadQueries();
+                loadStats();
+            } catch (error) {
+                showToast('Error resetting queries', 'error');
+            }
+        }
+        
+        async function clearAllQueries() {
+            if (!confirm('Are you sure you want to delete ALL search queries?')) return;
+            
+            try {
+                const response = await fetch('/api/queries', { method: 'DELETE' });
+                const result = await response.json();
+                showToast(result.message);
+                loadQueries();
+                loadStats();
+            } catch (error) {
+                showToast('Error clearing queries', 'error');
+            }
+        }
+        
+        // Add event listener for bulk query textarea
+        document.addEventListener('DOMContentLoaded', () => {
+            const bulkTextarea = document.getElementById('bulk-queries-input');
+            if (bulkTextarea) {
+                bulkTextarea.addEventListener('input', updateBulkQueryCount);
+            }
+        });
 
         async function saveQuery(event) {
             event.preventDefault();
