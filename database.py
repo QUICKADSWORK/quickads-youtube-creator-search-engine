@@ -3,11 +3,14 @@ SQLite Database Module for YouTube Channel Scraper
 """
 import sqlite3
 import json
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from contextlib import contextmanager
 
-DATABASE_PATH = "youtube_channels.db"
+# Use /data directory for Render persistent disk, fallback to local
+DATA_DIR = "/data" if os.path.exists("/data") else "."
+DATABASE_PATH = os.path.join(DATA_DIR, "youtube_channels.db")
 
 
 @contextmanager
