@@ -4,7 +4,7 @@ A beautiful web app to scrape and manage YouTube channel data.
 """
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Query, HTTPException
@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 
 import database as db
 import scraper
+import email_service
+import ai_outreach
 
 load_dotenv()
 
@@ -272,6 +274,70 @@ class ScrapeRequest(BaseModel):
     min_subscribers: int = 0
 
 
+# ============================================================
+# EMAIL & OUTREACH PYDANTIC MODELS
+# ============================================================
+
+class EmailAccountCreate(BaseModel):
+    email: str
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_password: str
+    display_name: str = ""
+    daily_limit: int = 50
+
+
+class EmailAccountBulkAdd(BaseModel):
+    accounts_text: str  # Format: email,password per line
+
+
+class CampaignCreate(BaseModel):
+    name: str
+    brief: str = ""
+    budget_min: float = 0
+    budget_max: float = 0
+    topic: str = ""
+    requirements: str = ""
+    deadline: str = ""
+
+
+class CampaignUpdate(BaseModel):
+    name: Optional[str] = None
+    brief: Optional[str] = None
+    budget_min: Optional[float] = None
+    budget_max: Optional[float] = None
+    topic: Optional[str] = None
+    requirements: Optional[str] = None
+    deadline: Optional[str] = None
+    status: Optional[str] = None
+
+
+class OutreachCreate(BaseModel):
+    campaign_id: int
+    channel_ids: list  # List of channel IDs
+    email_account_id: int
+
+
+class GenerateEmailRequest(BaseModel):
+    campaign_id: int
+    channel_id: str
+    recipient_email: str
+    email_account_id: int
+
+
+class SendEmailRequest(BaseModel):
+    outreach_id: int
+
+
+class UpdateChannelEmail(BaseModel):
+    email: str
+
+
+class NegotiationRequest(BaseModel):
+    outreach_id: int
+    creator_response: str
+
+
 @app.post("/api/scrape")
 async def trigger_scrape(request: ScrapeRequest = ScrapeRequest()):
     """Manually trigger a scrape with filters."""
@@ -338,6 +404,276 @@ async def export_channels(format: str = Query("csv")):
         )
     
     return {"channels": channels, "count": len(channels)}
+
+
+# ============================================================
+# EMAIL ACCOUNTS API
+# ============================================================
+
+@app.get("/api/email-accounts")
+async def get_email_accounts():
+    """Get all email accounts."""
+    accounts = db.get_email_accounts()
+    # Remove passwords from response
+    for acc in accounts:
+        acc['smtp_password'] = '***hidden***'
+    return {"accounts": accounts}
+
+
+@app.post("/api/email-accounts")
+async def create_email_account(account: EmailAccountCreate):
+    """Add a new email account."""
+    # Auto-detect SMTP if not provided
+    if not account.smtp_host:
+        config = email_service.get_smtp_config(account.email)
+        account.smtp_host = config["host"]
+        account.smtp_port = config["port"]
+    
+    # Test connection
+    success, message = email_service.test_smtp_connection(
+        account.email, account.smtp_host, account.smtp_port,
+        account.email, account.smtp_password
+    )
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    account_id = db.add_email_account(
+        email=account.email,
+        smtp_host=account.smtp_host,
+        smtp_port=account.smtp_port,
+        smtp_user=account.email,
+        smtp_password=account.smtp_password,
+        display_name=account.display_name,
+        daily_limit=account.daily_limit
+    )
+    
+    if account_id == -1:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    
+    return {"success": True, "id": account_id, "message": "Email account added"}
+
+
+@app.post("/api/email-accounts/bulk")
+async def bulk_add_email_accounts(request: EmailAccountBulkAdd):
+    """Add multiple email accounts at once."""
+    results = email_service.bulk_add_email_accounts(request.accounts_text)
+    return results
+
+
+@app.delete("/api/email-accounts/{account_id}")
+async def delete_email_account(account_id: int):
+    """Delete an email account."""
+    if db.delete_email_account(account_id):
+        return {"success": True, "message": "Account deleted"}
+    raise HTTPException(status_code=404, detail="Account not found")
+
+
+@app.post("/api/email-accounts/{account_id}/test")
+async def test_email_account(account_id: int):
+    """Test an email account connection."""
+    account = db.get_email_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    success, message = email_service.test_smtp_connection(
+        account['email'], account['smtp_host'], account['smtp_port'],
+        account['smtp_user'], account['smtp_password']
+    )
+    
+    return {"success": success, "message": message}
+
+
+# ============================================================
+# CAMPAIGNS API
+# ============================================================
+
+@app.get("/api/campaigns")
+async def get_campaigns(status: Optional[str] = None):
+    """Get all campaigns."""
+    campaigns = db.get_campaigns(status)
+    return {"campaigns": campaigns}
+
+
+@app.post("/api/campaigns")
+async def create_campaign(campaign: CampaignCreate):
+    """Create a new campaign."""
+    campaign_id = db.create_campaign(
+        name=campaign.name,
+        brief=campaign.brief,
+        budget_min=campaign.budget_min,
+        budget_max=campaign.budget_max,
+        topic=campaign.topic,
+        requirements=campaign.requirements,
+        deadline=campaign.deadline
+    )
+    return {"success": True, "id": campaign_id}
+
+
+@app.get("/api/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: int):
+    """Get a single campaign with its outreach emails."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    outreach = db.get_outreach_emails(campaign_id=campaign_id)
+    return {"campaign": campaign, "outreach": outreach}
+
+
+@app.put("/api/campaigns/{campaign_id}")
+async def update_campaign(campaign_id: int, update: CampaignUpdate):
+    """Update a campaign."""
+    update_data = {k: v for k, v in update.dict().items() if v is not None}
+    if db.update_campaign(campaign_id, **update_data):
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="Campaign not found")
+
+
+@app.delete("/api/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: int):
+    """Delete a campaign."""
+    if db.delete_campaign(campaign_id):
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="Campaign not found")
+
+
+# ============================================================
+# OUTREACH API
+# ============================================================
+
+@app.get("/api/outreach")
+async def get_all_outreach(campaign_id: Optional[int] = None, status: Optional[str] = None):
+    """Get all outreach emails."""
+    outreach = db.get_outreach_emails(campaign_id=campaign_id, status=status)
+    return {"outreach": outreach}
+
+
+@app.get("/api/outreach/stats")
+async def get_outreach_stats():
+    """Get outreach statistics."""
+    return db.get_outreach_stats()
+
+
+@app.post("/api/outreach/generate")
+async def generate_outreach_email(request: GenerateEmailRequest):
+    """Generate an AI-powered outreach email."""
+    # Get campaign details
+    campaign = db.get_campaign(request.campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Get channel details
+    channels = db.get_all_channels(limit=1, search=request.channel_id)
+    if not channels:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel = channels[0]
+    
+    # Generate email using AI
+    try:
+        email_content = ai_outreach.generate_outreach_email(
+            creator_name=channel.get('channel_title', ''),
+            channel_title=channel.get('channel_title', ''),
+            subscribers=channel.get('subscribers', 0),
+            content_focus=channel.get('description', '')[:200],
+            campaign_brief=campaign.get('brief', ''),
+            budget_min=campaign.get('budget_min', 0),
+            budget_max=campaign.get('budget_max', 0),
+            topic=campaign.get('topic', ''),
+            requirements=campaign.get('requirements', ''),
+            deadline=campaign.get('deadline', '')
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Create outreach record
+    outreach_id = db.create_outreach(
+        campaign_id=request.campaign_id,
+        channel_id=request.channel_id,
+        recipient_email=request.recipient_email,
+        email_account_id=request.email_account_id,
+        subject=email_content['subject'],
+        body=email_content['body']
+    )
+    
+    return {
+        "success": True,
+        "outreach_id": outreach_id,
+        "email": email_content
+    }
+
+
+@app.post("/api/outreach/{outreach_id}/send")
+async def send_outreach(outreach_id: int):
+    """Send an outreach email."""
+    success, message = email_service.send_outreach_email(outreach_id)
+    if success:
+        return {"success": True, "message": message}
+    raise HTTPException(status_code=400, detail=message)
+
+
+@app.get("/api/outreach/{outreach_id}")
+async def get_outreach_detail(outreach_id: int):
+    """Get outreach details with thread."""
+    outreach = db.get_outreach(outreach_id)
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    
+    thread = db.get_email_thread(outreach_id)
+    return {"outreach": outreach, "thread": thread}
+
+
+@app.post("/api/outreach/{outreach_id}/negotiate")
+async def handle_negotiation(outreach_id: int, request: NegotiationRequest):
+    """Handle a creator's response with AI negotiation."""
+    outreach = db.get_outreach(outreach_id)
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    
+    campaign = db.get_campaign(outreach['campaign_id'])
+    thread = db.get_email_thread(outreach_id)
+    
+    # Add creator's response to thread
+    db.add_email_thread(
+        outreach_id=outreach_id,
+        direction='inbound',
+        subject=f"Re: {outreach['subject']}",
+        body=request.creator_response
+    )
+    
+    # Update status
+    db.update_outreach(outreach_id, status='replied', reply_content=request.creator_response)
+    
+    # Generate AI response
+    try:
+        ai_response = ai_outreach.generate_negotiation_response(
+            conversation_history=[{"direction": t['direction'], "body": t['body']} for t in thread],
+            creator_response=request.creator_response,
+            campaign_brief=campaign.get('brief', ''),
+            budget_min=campaign.get('budget_min', 0),
+            budget_max=campaign.get('budget_max', 0),
+            negotiation_stage=outreach.get('negotiation_stage', 'initial')
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    # Update negotiation stage
+    db.update_outreach(outreach_id, 
+                       negotiation_stage=ai_response.get('new_stage', 'negotiating'),
+                       ai_response=ai_response.get('response_body', ''))
+    
+    return {
+        "success": True,
+        "ai_analysis": ai_response
+    }
+
+
+@app.put("/api/channels/{channel_id}/email")
+async def update_channel_email(channel_id: str, update: UpdateChannelEmail):
+    """Update email for a channel."""
+    if db.update_channel_email(channel_id, update.email):
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="Channel not found")
 
 
 if __name__ == "__main__":

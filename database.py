@@ -74,6 +74,13 @@ def init_db():
             )
         """)
         
+        conn.commit()
+    
+    # Initialize email tables
+    init_email_tables()
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
         # Insert default search queries if empty
         cursor.execute("SELECT COUNT(*) FROM search_queries")
         if cursor.fetchone()[0] == 0:
@@ -473,4 +480,382 @@ def get_stats() -> Dict:
             "by_country": by_country,
             "by_language": by_language,
             "last_scrape": last_scrape
+        }
+
+
+# ============================================================
+# EMAIL ACCOUNTS MANAGEMENT
+# ============================================================
+
+def init_email_tables():
+    """Initialize email-related tables."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Email accounts table (SMTP credentials)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                smtp_host TEXT NOT NULL,
+                smtp_port INTEGER DEFAULT 587,
+                smtp_user TEXT NOT NULL,
+                smtp_password TEXT NOT NULL,
+                display_name TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                last_used TIMESTAMP,
+                emails_sent_today INTEGER DEFAULT 0,
+                daily_limit INTEGER DEFAULT 50,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Campaigns table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                brief TEXT,
+                budget_min REAL,
+                budget_max REAL,
+                topic TEXT,
+                requirements TEXT,
+                deadline TEXT,
+                status TEXT DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Outreach emails table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS outreach_emails (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id INTEGER,
+                channel_id TEXT,
+                email_account_id INTEGER,
+                recipient_email TEXT,
+                subject TEXT,
+                body TEXT,
+                status TEXT DEFAULT 'draft',
+                sent_at TIMESTAMP,
+                opened_at TIMESTAMP,
+                replied_at TIMESTAMP,
+                reply_content TEXT,
+                ai_response TEXT,
+                negotiation_stage TEXT DEFAULT 'initial',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY (email_account_id) REFERENCES email_accounts(id)
+            )
+        """)
+        
+        # Email threads table (for tracking conversations)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_threads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                outreach_id INTEGER,
+                direction TEXT,
+                subject TEXT,
+                body TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (outreach_id) REFERENCES outreach_emails(id)
+            )
+        """)
+        
+        conn.commit()
+
+
+def add_email_account(email: str, smtp_host: str, smtp_port: int, 
+                      smtp_user: str, smtp_password: str, 
+                      display_name: str = "", daily_limit: int = 50) -> int:
+    """Add a new email account."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO email_accounts 
+                (email, smtp_host, smtp_port, smtp_user, smtp_password, display_name, daily_limit)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (email, smtp_host, smtp_port, smtp_user, smtp_password, display_name, daily_limit))
+            conn.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return -1
+
+
+def get_email_accounts(active_only: bool = False) -> List[Dict]:
+    """Get all email accounts."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if active_only:
+            cursor.execute("SELECT * FROM email_accounts WHERE is_active = 1")
+        else:
+            cursor.execute("SELECT * FROM email_accounts")
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_email_account(account_id: int) -> Optional[Dict]:
+    """Get a single email account by ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM email_accounts WHERE id = ?", (account_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_email_account(account_id: int, **kwargs) -> bool:
+    """Update an email account."""
+    if not kwargs:
+        return False
+    with get_db() as conn:
+        cursor = conn.cursor()
+        updates = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [account_id]
+        cursor.execute(f"UPDATE email_accounts SET {updates} WHERE id = ?", values)
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_email_account(account_id: int) -> bool:
+    """Delete an email account."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM email_accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def increment_email_sent(account_id: int):
+    """Increment the emails sent counter for an account."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE email_accounts 
+            SET emails_sent_today = emails_sent_today + 1, last_used = ?
+            WHERE id = ?
+        """, (datetime.now(), account_id))
+        conn.commit()
+
+
+def reset_daily_email_counts():
+    """Reset daily email counts for all accounts (call daily)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE email_accounts SET emails_sent_today = 0")
+        conn.commit()
+
+
+# ============================================================
+# CAMPAIGNS MANAGEMENT
+# ============================================================
+
+def create_campaign(name: str, brief: str = "", budget_min: float = 0, 
+                   budget_max: float = 0, topic: str = "", 
+                   requirements: str = "", deadline: str = "") -> int:
+    """Create a new campaign."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO campaigns 
+            (name, brief, budget_min, budget_max, topic, requirements, deadline, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')
+        """, (name, brief, budget_min, budget_max, topic, requirements, deadline))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_campaigns(status: str = None) -> List[Dict]:
+    """Get all campaigns."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if status:
+            cursor.execute("SELECT * FROM campaigns WHERE status = ? ORDER BY created_at DESC", (status,))
+        else:
+            cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_campaign(campaign_id: int) -> Optional[Dict]:
+    """Get a single campaign by ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_campaign(campaign_id: int, **kwargs) -> bool:
+    """Update a campaign."""
+    if not kwargs:
+        return False
+    kwargs['updated_at'] = datetime.now()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        updates = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [campaign_id]
+        cursor.execute(f"UPDATE campaigns SET {updates} WHERE id = ?", values)
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_campaign(campaign_id: int) -> bool:
+    """Delete a campaign."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# ============================================================
+# OUTREACH EMAILS MANAGEMENT
+# ============================================================
+
+def create_outreach(campaign_id: int, channel_id: str, recipient_email: str,
+                   email_account_id: int, subject: str, body: str) -> int:
+    """Create a new outreach email."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO outreach_emails 
+            (campaign_id, channel_id, email_account_id, recipient_email, subject, body, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'draft')
+        """, (campaign_id, channel_id, email_account_id, recipient_email, subject, body))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_outreach_emails(campaign_id: int = None, status: str = None) -> List[Dict]:
+    """Get outreach emails with optional filters."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
+        
+        if campaign_id:
+            conditions.append("o.campaign_id = ?")
+            params.append(campaign_id)
+        if status:
+            conditions.append("o.status = ?")
+            params.append(status)
+        
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        
+        cursor.execute(f"""
+            SELECT o.*, c.channel_title, c.subscribers, c.thumbnail_url
+            FROM outreach_emails o
+            LEFT JOIN channels c ON o.channel_id = c.channel_id
+            {where_clause}
+            ORDER BY o.created_at DESC
+        """, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_outreach(outreach_id: int) -> Optional[Dict]:
+    """Get a single outreach email by ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT o.*, c.channel_title, c.subscribers, c.thumbnail_url
+            FROM outreach_emails o
+            LEFT JOIN channels c ON o.channel_id = c.channel_id
+            WHERE o.id = ?
+        """, (outreach_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_outreach(outreach_id: int, **kwargs) -> bool:
+    """Update an outreach email."""
+    if not kwargs:
+        return False
+    with get_db() as conn:
+        cursor = conn.cursor()
+        updates = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [outreach_id]
+        cursor.execute(f"UPDATE outreach_emails SET {updates} WHERE id = ?", values)
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def mark_outreach_sent(outreach_id: int):
+    """Mark an outreach email as sent."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE outreach_emails 
+            SET status = 'sent', sent_at = ?
+            WHERE id = ?
+        """, (datetime.now(), outreach_id))
+        conn.commit()
+
+
+def add_email_thread(outreach_id: int, direction: str, subject: str, body: str) -> int:
+    """Add a message to an email thread."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO email_threads (outreach_id, direction, subject, body)
+            VALUES (?, ?, ?, ?)
+        """, (outreach_id, direction, subject, body))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_email_thread(outreach_id: int) -> List[Dict]:
+    """Get all messages in an email thread."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM email_threads 
+            WHERE outreach_id = ? 
+            ORDER BY sent_at ASC
+        """, (outreach_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def update_channel_email(channel_id: str, email: str) -> bool:
+    """Update the email for a channel."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE channels SET email = ? WHERE channel_id = ?", (email, channel_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_outreach_stats() -> Dict:
+    """Get outreach statistics."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM outreach_emails")
+        total = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM outreach_emails WHERE status = 'draft'")
+        drafts = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM outreach_emails WHERE status = 'sent'")
+        sent = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM outreach_emails WHERE status = 'replied'")
+        replied = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM outreach_emails WHERE negotiation_stage = 'deal_closed'")
+        deals = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM campaigns")
+        campaigns = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM email_accounts WHERE is_active = 1")
+        active_accounts = cursor.fetchone()[0]
+        
+        return {
+            "total_outreach": total,
+            "drafts": drafts,
+            "sent": sent,
+            "replied": replied,
+            "deals_closed": deals,
+            "campaigns": campaigns,
+            "active_email_accounts": active_accounts
         }
