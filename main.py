@@ -282,9 +282,10 @@ class EmailAccountCreate(BaseModel):
     email: str
     smtp_host: str = ""
     smtp_port: int = 587
+    smtp_user: str = ""
     smtp_password: str
     display_name: str = ""
-    daily_limit: int = 50
+    daily_limit: int = 100
 
 
 class EmailAccountBulkAdd(BaseModel):
@@ -429,10 +430,13 @@ async def create_email_account(account: EmailAccountCreate):
         account.smtp_host = config["host"]
         account.smtp_port = config["port"]
     
+    # Use provided smtp_user or default to email
+    smtp_user = account.smtp_user if account.smtp_user else account.email
+    
     # Test connection
     success, message = email_service.test_smtp_connection(
         account.email, account.smtp_host, account.smtp_port,
-        account.email, account.smtp_password
+        smtp_user, account.smtp_password
     )
     
     if not success:
@@ -442,7 +446,7 @@ async def create_email_account(account: EmailAccountCreate):
         email=account.email,
         smtp_host=account.smtp_host,
         smtp_port=account.smtp_port,
-        smtp_user=account.email,
+        smtp_user=smtp_user,
         smtp_password=account.smtp_password,
         display_name=account.display_name,
         daily_limit=account.daily_limit
