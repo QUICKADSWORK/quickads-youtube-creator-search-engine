@@ -286,6 +286,7 @@ class EmailAccountCreate(BaseModel):
     smtp_password: str
     display_name: str = ""
     daily_limit: int = 100
+    skip_test: bool = False
 
 
 class EmailAccountBulkAdd(BaseModel):
@@ -433,14 +434,15 @@ async def create_email_account(account: EmailAccountCreate):
     # Use provided smtp_user or default to email
     smtp_user = account.smtp_user if account.smtp_user else account.email
     
-    # Test connection
-    success, message = email_service.test_smtp_connection(
-        account.email, account.smtp_host, account.smtp_port,
-        smtp_user, account.smtp_password
-    )
-    
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
+    # Test connection (unless skipped)
+    if not account.skip_test:
+        success, message = email_service.test_smtp_connection(
+            account.email, account.smtp_host, account.smtp_port,
+            smtp_user, account.smtp_password
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
     
     account_id = db.add_email_account(
         email=account.email,
