@@ -17,6 +17,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from dotenv import load_dotenv
 
 import database as db
+import auto_negotiator
 import scraper
 import email_service
 import ai_outreach
@@ -59,8 +60,17 @@ async def lifespan(app: FastAPI):
         name="YouTube Channel Scraper",
         replace_existing=True
     )
+    
+    # Auto-negotiator runs every 5 minutes to check for replies
+    scheduler.add_job(
+        auto_negotiator.run_auto_negotiator,
+        trigger=IntervalTrigger(minutes=5),
+        id="auto_negotiator",
+        name="Auto Email Negotiator",
+        replace_existing=True
+    )
     scheduler.start()
-    print(f"Scheduler started (runs every {interval_hours} hour(s))")
+    print(f"Scheduler started: Scraper every {interval_hours}h, Auto-negotiator every 5min")
     
     yield
     
@@ -764,6 +774,33 @@ async def send_test_email(req: TestEmailRequest):
         return {"success": True, "message": f"Test email sent to {req.to_email}"}
     else:
         raise HTTPException(status_code=500, detail=message)
+
+
+# ============ Auto Negotiation Endpoints ============
+
+@app.get("/api/auto-negotiator/status")
+async def get_auto_negotiator_status():
+    """Get auto-negotiator status."""
+    job = scheduler.get_job("auto_negotiator")
+    return {
+        "enabled": job is not None,
+        "next_run": str(job.next_run_time) if job else None,
+        "interval_minutes": 5
+    }
+
+
+@app.post("/api/auto-negotiator/run")
+async def run_auto_negotiator_now():
+    """Manually trigger the auto-negotiator."""
+    try:
+        results = auto_negotiator.run_auto_negotiator()
+        return {
+            "success": True,
+            "processed": len(results),
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============ Mailing List Endpoints ============

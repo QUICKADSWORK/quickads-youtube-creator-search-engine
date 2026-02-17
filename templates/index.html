@@ -344,6 +344,21 @@
                     </button>
                 </div>
                 
+                <!-- Auto-Mode Banner -->
+                <div id="auto-mode-banner" class="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl p-4 mb-6 flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-3 h-3 bg-white rounded-full animate-pulse mr-3"></div>
+                        <div>
+                            <p class="font-semibold">Auto-Negotiation Mode: ACTIVE</p>
+                            <p class="text-sm text-green-100">Checking inbox every 5 minutes • AI auto-responds to creators</p>
+                        </div>
+                    </div>
+                    <button onclick="runAutoNegotiatorNow()" 
+                        class="bg-white text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-all">
+                        Check Now
+                    </button>
+                </div>
+                
                 <!-- Outreach Stats -->
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                     <div class="bg-white rounded-xl shadow-sm p-4">
@@ -2224,6 +2239,30 @@ emma.lifestyle@gmail.com"></textarea>
                 }
             } catch (error) {
                 showToast('Error generating AI response', 'error');
+            }
+        }
+        
+        async function runAutoNegotiatorNow() {
+            showToast('Checking inbox for replies...', 'info');
+            
+            try {
+                const response = await fetch('/api/auto-negotiator/run', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    if (result.processed > 0) {
+                        showToast(`Processed ${result.processed} new replies!`);
+                        loadCampaigns();
+                    } else {
+                        showToast('No new replies found');
+                    }
+                } else {
+                    showToast(result.detail || 'Error checking inbox', 'error');
+                }
+            } catch (error) {
+                showToast('Error running auto-negotiator', 'error');
             }
         }
         
