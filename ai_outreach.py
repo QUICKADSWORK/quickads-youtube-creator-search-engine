@@ -16,8 +16,13 @@ def get_client():
     """Get Anthropic client."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key or api_key == "your_anthropic_api_key_here":
-        raise ValueError("Please set a valid ANTHROPIC_API_KEY in your .env file")
-    return anthropic.Anthropic(api_key=api_key)
+        print("WARNING: ANTHROPIC_API_KEY not set - AI features disabled")
+        return None
+    try:
+        return anthropic.Anthropic(api_key=api_key)
+    except Exception as e:
+        print(f"ERROR creating Anthropic client: {e}")
+        return None
 
 
 def generate_outreach_email(
@@ -80,6 +85,9 @@ OUTPUT FORMAT (JSON only, no markdown):
 """
 
     try:
+        if not client:
+            raise ValueError("AI client not available")
+            
         message = client.messages.create(
             model="claude-sonnet-4-5-20250929",
             max_tokens=1024,

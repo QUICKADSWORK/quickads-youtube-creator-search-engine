@@ -10,7 +10,15 @@ from contextlib import contextmanager
 
 # Use /data directory for Render persistent disk, fallback to local
 DATA_DIR = "/data" if os.path.exists("/data") else "."
+
+# Ensure directory exists
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except:
+    DATA_DIR = "."
+
 DATABASE_PATH = os.path.join(DATA_DIR, "youtube_channels.db")
+print(f"Database path: {DATABASE_PATH}")
 
 
 @contextmanager
