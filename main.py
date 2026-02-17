@@ -964,25 +964,34 @@ async def clear_mailing_list(campaign_id: int = None):
 @app.post("/api/mailing-list/send-all")
 async def send_to_mailing_list(req: BulkSendRequest):
     """Send emails to all contacts in mailing list."""
-    # Get campaign
-    campaign = db.get_campaign(req.campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    
-    # Get contacts
-    if req.contact_ids:
-        contacts = [db.get_mailing_list_contact(cid) for cid in req.contact_ids]
-        contacts = [c for c in contacts if c]
-    else:
-        contacts = db.get_mailing_list(campaign_id=req.campaign_id, status="pending")
-    
-    if not contacts:
-        raise HTTPException(status_code=400, detail="No pending contacts to send to")
-    
-    # Get available email account
-    account = email_service.get_available_account()
-    if not account:
-        raise HTTPException(status_code=400, detail="No email accounts available")
+    try:
+        print(f"Starting campaign send for campaign_id: {req.campaign_id}")
+        
+        # Get campaign
+        campaign = db.get_campaign(req.campaign_id)
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        
+        print(f"Campaign found: {campaign.get('name')}")
+        
+        # Get contacts
+        if req.contact_ids:
+            contacts = [db.get_mailing_list_contact(cid) for cid in req.contact_ids]
+            contacts = [c for c in contacts if c]
+        else:
+            contacts = db.get_mailing_list(campaign_id=req.campaign_id, status="pending")
+        
+        print(f"Found {len(contacts)} pending contacts")
+        
+        if not contacts:
+            raise HTTPException(status_code=400, detail="No pending contacts to send to")
+        
+        # Get available email account
+        account = email_service.get_available_account()
+        if not account:
+            raise HTTPException(status_code=400, detail="No email accounts available. Please add an email account first.")
+        
+        print(f"Using email account: {account.get('email')}")
     
     sent_count = 0
     errors = []
@@ -1032,12 +1041,19 @@ async def send_to_mailing_list(req: BulkSendRequest):
         except Exception as e:
             errors.append({"email": contact["email"], "error": str(e)})
     
-    return {
-        "success": True,
-        "sent": sent_count,
-        "total": len(contacts),
-        "errors": errors[:10]  # Limit errors shown
-    }
+        print(f"Campaign send complete: {sent_count}/{len(contacts)} sent")
+        return {
+            "success": True,
+            "sent": sent_count,
+            "total": len(contacts),
+            "errors": errors[:10]  # Limit errors shown
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"ERROR in send_to_mailing_list: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start campaign: {str(e)}")
 
 
 if __name__ == "__main__":
