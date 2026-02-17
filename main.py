@@ -682,6 +682,198 @@ async def update_channel_email(channel_id: str, update: UpdateChannelEmail):
     raise HTTPException(status_code=404, detail="Channel not found")
 
 
+class TestEmailRequest(BaseModel):
+    to_email: str
+    subject: str = "Test Email from YouTube Scraper"
+    body: str = "This is a test email. If you received this, the email system is working!"
+
+
+@app.post("/api/test-email")
+async def send_test_email(req: TestEmailRequest):
+    """Send a test email."""
+    # Get the first active email account
+    account = email_service.get_available_account()
+    if not account:
+        raise HTTPException(status_code=400, detail="No email accounts configured. Please add one first.")
+    
+    success, message = email_service.send_email(
+        account_id=account["id"],
+        to_email=req.to_email,
+        subject=req.subject,
+        body=req.body
+    )
+    
+    if success:
+        return {"success": True, "message": f"Test email sent to {req.to_email}"}
+    else:
+        raise HTTPException(status_code=500, detail=message)
+
+
+# ============ Mailing List Endpoints ============
+
+class MailingListContact(BaseModel):
+    name: str
+    email: str
+    channel_id: str = None
+    channel_title: str = None
+    subscribers: int = None
+    notes: str = None
+    campaign_id: int = None
+
+
+class MailingListBulkAdd(BaseModel):
+    contacts_text: str  # Format: "Name, Email" per line
+    campaign_id: int = None
+
+
+class BulkSendRequest(BaseModel):
+    campaign_id: int
+    contact_ids: List[int] = None  # If None, send to all pending in campaign
+
+
+@app.get("/api/mailing-list")
+async def get_mailing_list(campaign_id: int = None, status: str = None):
+    """Get mailing list contacts."""
+    contacts = db.get_mailing_list(campaign_id, status)
+    stats = db.get_mailing_list_stats()
+    return {"contacts": contacts, "stats": stats}
+
+
+@app.post("/api/mailing-list")
+async def add_to_mailing_list(contact: MailingListContact):
+    """Add a contact to mailing list."""
+    contact_id = db.add_to_mailing_list(
+        name=contact.name,
+        email=contact.email,
+        channel_id=contact.channel_id,
+        channel_title=contact.channel_title,
+        subscribers=contact.subscribers,
+        notes=contact.notes,
+        campaign_id=contact.campaign_id
+    )
+    return {"success": True, "id": contact_id}
+
+
+@app.post("/api/mailing-list/bulk")
+async def bulk_add_to_mailing_list(data: MailingListBulkAdd):
+    """Bulk add contacts to mailing list."""
+    contacts = []
+    for line in data.contacts_text.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 2:
+            contacts.append({
+                "name": parts[0],
+                "email": parts[1],
+                "channel_title": parts[2] if len(parts) > 2 else None,
+                "notes": parts[3] if len(parts) > 3 else None
+            })
+        elif "@" in parts[0]:
+            # Just email
+            contacts.append({
+                "name": parts[0].split("@")[0],
+                "email": parts[0]
+            })
+    
+    added = db.add_bulk_to_mailing_list(contacts, data.campaign_id)
+    return {"success": True, "added": added, "total_parsed": len(contacts)}
+
+
+@app.delete("/api/mailing-list/{contact_id}")
+async def delete_mailing_list_contact(contact_id: int):
+    """Delete a contact from mailing list."""
+    if db.delete_mailing_list_contact(contact_id):
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="Contact not found")
+
+
+@app.delete("/api/mailing-list")
+async def clear_mailing_list(campaign_id: int = None):
+    """Clear mailing list."""
+    deleted = db.clear_mailing_list(campaign_id)
+    return {"success": True, "deleted": deleted}
+
+
+@app.post("/api/mailing-list/send-all")
+async def send_to_mailing_list(req: BulkSendRequest):
+    """Send emails to all contacts in mailing list."""
+    # Get campaign
+    campaign = db.get_campaign(req.campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Get contacts
+    if req.contact_ids:
+        contacts = [db.get_mailing_list_contact(cid) for cid in req.contact_ids]
+        contacts = [c for c in contacts if c]
+    else:
+        contacts = db.get_mailing_list(campaign_id=req.campaign_id, status="pending")
+    
+    if not contacts:
+        raise HTTPException(status_code=400, detail="No pending contacts to send to")
+    
+    # Get available email account
+    account = email_service.get_available_account()
+    if not account:
+        raise HTTPException(status_code=400, detail="No email accounts available")
+    
+    sent_count = 0
+    errors = []
+    
+    for contact in contacts:
+        try:
+            # Generate AI email for this contact
+            email_content = ai_outreach.generate_outreach_email(
+                creator_name=contact["name"],
+                channel_title=contact.get("channel_title") or contact["name"],
+                subscribers=contact.get("subscribers") or 0,
+                content_focus="content creation",
+                campaign_brief=campaign["brief"] or "",
+                budget_min=campaign.get("budget_min") or 100,
+                budget_max=campaign.get("budget_max") or 500,
+                topic=campaign.get("topic") or "",
+                requirements=campaign.get("requirements") or "",
+                deadline=campaign.get("deadline") or "",
+                sender_name=account.get("display_name") or "Marketing Team"
+            )
+            
+            # Create outreach record
+            outreach_id = db.create_outreach(
+                campaign_id=req.campaign_id,
+                channel_id=contact.get("channel_id"),
+                recipient_email=contact["email"],
+                subject=email_content["subject"],
+                body=email_content["body"]
+            )
+            
+            # Send email
+            success, message = email_service.send_email(
+                account_id=account["id"],
+                to_email=contact["email"],
+                subject=email_content["subject"],
+                body=email_content["body"]
+            )
+            
+            if success:
+                db.mark_outreach_sent(outreach_id, account["id"])
+                db.update_mailing_list_contact(contact["id"], status="sent", outreach_id=outreach_id)
+                sent_count += 1
+            else:
+                errors.append({"email": contact["email"], "error": message})
+                
+        except Exception as e:
+            errors.append({"email": contact["email"], "error": str(e)})
+    
+    return {
+        "success": True,
+        "sent": sent_count,
+        "total": len(contacts),
+        "errors": errors[:10]  # Limit errors shown
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))

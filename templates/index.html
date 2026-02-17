@@ -112,6 +112,10 @@
                         class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
                         ⚙️ Email Accounts
                     </button>
+                    <button onclick="switchTab('mailing')" id="tab-mailing" 
+                        class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                        📋 Mailing List
+                    </button>
                 </nav>
             </div>
         </div>
@@ -406,6 +410,99 @@
                 <!-- Email Accounts List -->
                 <div id="email-accounts-list" class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <!-- Email accounts will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- Mailing List Tab -->
+            <div id="content-mailing" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">Mailing List</h2>
+                        <p class="text-sm text-gray-500 mt-1">Add creator emails, select a campaign, and send bulk outreach</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="clearMailingList()" 
+                            class="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-medium hover:bg-red-200 transition-all">
+                            Clear All
+                        </button>
+                        <button onclick="showAddContactModal()" 
+                            class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Add Contacts
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Mailing List Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <div class="text-2xl font-bold text-gray-900" id="ml-stat-total">0</div>
+                        <div class="text-sm text-gray-500">Total Contacts</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <div class="text-2xl font-bold text-yellow-600" id="ml-stat-pending">0</div>
+                        <div class="text-sm text-gray-500">Pending</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <div class="text-2xl font-bold text-green-600" id="ml-stat-sent">0</div>
+                        <div class="text-sm text-gray-500">Sent</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-4">
+                        <div class="text-2xl font-bold text-blue-600" id="ml-stat-replied">0</div>
+                        <div class="text-sm text-gray-500">Replied</div>
+                    </div>
+                </div>
+                
+                <!-- Send All Section -->
+                <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 mb-6 border border-purple-100">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">🚀 Bulk Send Outreach</h3>
+                    <div class="flex flex-wrap items-end gap-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Select Campaign</label>
+                            <select id="ml-campaign-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                <option value="">-- Select a Campaign --</option>
+                            </select>
+                        </div>
+                        <button onclick="sendToAllPending()" 
+                            class="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            Send to All Pending
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">AI will generate personalized emails for each contact based on the campaign brief</p>
+                </div>
+                
+                <!-- Mailing List Table -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Channel</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mailing-list-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Contacts will be loaded here -->
+                        </tbody>
+                    </table>
+                    <div id="mailing-list-empty" class="hidden p-12 text-center">
+                        <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No contacts yet</h3>
+                        <p class="text-gray-500 mb-4">Add creator emails to start your outreach campaign</p>
+                        <button onclick="showAddContactModal()" 
+                            class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all">
+                            Add Contacts
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>
@@ -941,6 +1038,65 @@ account3@gmail.com,apppassword3"></textarea>
                     class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
                 <button onclick="saveBulkEmails()" 
                     class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Add All Accounts</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Contact Modal (Mailing List) -->
+    <div id="add-contact-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-xl p-6 w-full max-w-xl mx-4 my-8 fade-in">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Add Contacts to Mailing List</h3>
+            <p class="text-sm text-gray-500 mb-4">Add creator emails for bulk outreach</p>
+            
+            <div class="space-y-4">
+                <!-- Single Contact -->
+                <div class="border-b pb-4">
+                    <h4 class="font-medium text-gray-700 mb-3">Add Single Contact</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Name*</label>
+                            <input type="text" id="contact-name" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                placeholder="Creator name">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Email*</label>
+                            <input type="email" id="contact-email" 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                placeholder="creator@email.com">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="block text-sm text-gray-600 mb-1">Notes (optional)</label>
+                        <input type="text" id="contact-notes" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                            placeholder="e.g., Tech reviewer, 50K subs">
+                    </div>
+                    <button onclick="addSingleContact()" 
+                        class="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-all text-sm">
+                        Add Contact
+                    </button>
+                </div>
+                
+                <!-- Bulk Add -->
+                <div>
+                    <h4 class="font-medium text-gray-700 mb-3">Or Paste Multiple Contacts</h4>
+                    <p class="text-xs text-gray-500 mb-2">Format: Name, Email (one per line)</p>
+                    <textarea id="bulk-contacts-input" rows="6"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                        placeholder="John Doe, john@email.com
+Jane Smith, jane@email.com
+Tech Creator, tech@youtube.com"></textarea>
+                    <button onclick="addBulkContacts()" 
+                        class="mt-3 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-all text-sm">
+                        Add All Contacts
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex justify-end mt-6 pt-4 border-t">
+                <button type="button" onclick="hideAddContactModal()" 
+                    class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
             </div>
         </div>
     </div>
@@ -2096,6 +2252,222 @@ account3@gmail.com,apppassword3"></textarea>
             }
         }
 
+        // ============================================================
+        // MAILING LIST FUNCTIONS
+        // ============================================================
+        
+        async function loadMailingList() {
+            try {
+                const response = await fetch('/api/mailing-list');
+                const data = await response.json();
+                
+                // Update stats
+                document.getElementById('ml-stat-total').textContent = data.stats.total || 0;
+                document.getElementById('ml-stat-pending').textContent = data.stats.pending || 0;
+                document.getElementById('ml-stat-sent').textContent = data.stats.sent || 0;
+                document.getElementById('ml-stat-replied').textContent = data.stats.replied || 0;
+                
+                // Update campaign dropdown
+                await loadCampaignsForMailingList();
+                
+                const tbody = document.getElementById('mailing-list-body');
+                const emptyState = document.getElementById('mailing-list-empty');
+                
+                if (data.contacts.length === 0) {
+                    tbody.innerHTML = '';
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+                
+                emptyState.classList.add('hidden');
+                tbody.innerHTML = data.contacts.map(contact => `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${contact.name}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">${contact.email}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-500">${contact.channel_title || '-'}</div>
+                            ${contact.subscribers ? `<div class="text-xs text-gray-400">${formatNumber(contact.subscribers)} subs</div>` : ''}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs rounded-full ${
+                                contact.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                contact.status === 'replied' ? 'bg-blue-100 text-blue-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }">
+                                ${contact.status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <button onclick="deleteMailingListContact(${contact.id})" 
+                                class="text-red-600 hover:text-red-800">Remove</button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading mailing list:', error);
+            }
+        }
+        
+        async function loadCampaignsForMailingList() {
+            try {
+                const response = await fetch('/api/campaigns');
+                const data = await response.json();
+                
+                const select = document.getElementById('ml-campaign-select');
+                select.innerHTML = '<option value="">-- Select a Campaign --</option>' +
+                    data.campaigns.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            } catch (error) {
+                console.error('Error loading campaigns:', error);
+            }
+        }
+        
+        function showAddContactModal() {
+            document.getElementById('add-contact-modal').classList.remove('hidden');
+            document.getElementById('add-contact-modal').classList.add('flex');
+        }
+        
+        function hideAddContactModal() {
+            document.getElementById('add-contact-modal').classList.add('hidden');
+            document.getElementById('add-contact-modal').classList.remove('flex');
+            document.getElementById('contact-name').value = '';
+            document.getElementById('contact-email').value = '';
+            document.getElementById('contact-notes').value = '';
+            document.getElementById('bulk-contacts-input').value = '';
+        }
+        
+        async function addSingleContact() {
+            const name = document.getElementById('contact-name').value;
+            const email = document.getElementById('contact-email').value;
+            const notes = document.getElementById('contact-notes').value;
+            
+            if (!name || !email) {
+                showToast('Please enter name and email', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/mailing-list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, notes })
+                });
+                
+                if (response.ok) {
+                    showToast('Contact added!');
+                    document.getElementById('contact-name').value = '';
+                    document.getElementById('contact-email').value = '';
+                    document.getElementById('contact-notes').value = '';
+                    loadMailingList();
+                } else {
+                    showToast('Error adding contact', 'error');
+                }
+            } catch (error) {
+                showToast('Error adding contact', 'error');
+            }
+        }
+        
+        async function addBulkContacts() {
+            const text = document.getElementById('bulk-contacts-input').value;
+            
+            if (!text.trim()) {
+                showToast('Please enter contacts', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/mailing-list/bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contacts_text: text })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(`Added ${result.added} contacts!`);
+                    hideAddContactModal();
+                    loadMailingList();
+                } else {
+                    showToast('Error adding contacts', 'error');
+                }
+            } catch (error) {
+                showToast('Error adding contacts', 'error');
+            }
+        }
+        
+        async function deleteMailingListContact(contactId) {
+            if (!confirm('Remove this contact?')) return;
+            
+            try {
+                const response = await fetch(`/api/mailing-list/${contactId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showToast('Contact removed');
+                    loadMailingList();
+                } else {
+                    showToast('Error removing contact', 'error');
+                }
+            } catch (error) {
+                showToast('Error removing contact', 'error');
+            }
+        }
+        
+        async function clearMailingList() {
+            if (!confirm('Clear all contacts from the mailing list?')) return;
+            
+            try {
+                const response = await fetch('/api/mailing-list', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showToast('Mailing list cleared');
+                    loadMailingList();
+                } else {
+                    showToast('Error clearing list', 'error');
+                }
+            } catch (error) {
+                showToast('Error clearing list', 'error');
+            }
+        }
+        
+        async function sendToAllPending() {
+            const campaignId = document.getElementById('ml-campaign-select').value;
+            
+            if (!campaignId) {
+                showToast('Please select a campaign first', 'error');
+                return;
+            }
+            
+            if (!confirm('Send AI-generated emails to all pending contacts?')) return;
+            
+            showToast('Sending emails... This may take a moment', 'info');
+            
+            try {
+                const response = await fetch('/api/mailing-list/send-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ campaign_id: parseInt(campaignId) })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(`Sent ${result.sent} of ${result.total} emails!`);
+                    loadMailingList();
+                } else {
+                    showToast(result.detail || 'Error sending emails', 'error');
+                }
+            } catch (error) {
+                showToast('Error sending emails', 'error');
+            }
+        }
+
         // Tab switching update
         function switchTab(tabName) {
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2117,6 +2489,7 @@ account3@gmail.com,apppassword3"></textarea>
             if (tabName === 'history') loadHistory();
             if (tabName === 'campaigns') loadCampaigns();
             if (tabName === 'emails') loadEmailAccounts();
+            if (tabName === 'mailing') loadMailingList();
         }
 
         // Initialize

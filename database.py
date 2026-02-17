@@ -563,6 +563,25 @@ def init_email_tables():
             )
         """)
         
+        # Mailing list table (for bulk outreach)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mailing_list (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                channel_id TEXT,
+                channel_title TEXT,
+                subscribers INTEGER,
+                notes TEXT,
+                status TEXT DEFAULT 'pending',
+                campaign_id INTEGER,
+                outreach_id INTEGER,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+                FOREIGN KEY (outreach_id) REFERENCES outreach_emails(id)
+            )
+        """)
+        
         conn.commit()
 
 
@@ -858,4 +877,133 @@ def get_outreach_stats() -> Dict:
             "deals_closed": deals,
             "campaigns": campaigns,
             "active_email_accounts": active_accounts
+        }
+
+
+# ============ Mailing List Functions ============
+
+def add_to_mailing_list(name: str, email: str, channel_id: str = None, 
+                        channel_title: str = None, subscribers: int = None,
+                        notes: str = None, campaign_id: int = None) -> int:
+    """Add a contact to the mailing list."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO mailing_list 
+            (name, email, channel_id, channel_title, subscribers, notes, campaign_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (name, email, channel_id, channel_title, subscribers, notes, campaign_id))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def add_bulk_to_mailing_list(contacts: List[Dict], campaign_id: int = None) -> int:
+    """Add multiple contacts to mailing list."""
+    added = 0
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for contact in contacts:
+            try:
+                cursor.execute("""
+                    INSERT INTO mailing_list 
+                    (name, email, channel_id, channel_title, subscribers, notes, campaign_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    contact.get("name", ""),
+                    contact.get("email"),
+                    contact.get("channel_id"),
+                    contact.get("channel_title"),
+                    contact.get("subscribers"),
+                    contact.get("notes"),
+                    campaign_id
+                ))
+                added += 1
+            except Exception:
+                continue
+        conn.commit()
+    return added
+
+
+def get_mailing_list(campaign_id: int = None, status: str = None) -> List[Dict]:
+    """Get mailing list contacts."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        query = "SELECT * FROM mailing_list WHERE 1=1"
+        params = []
+        
+        if campaign_id:
+            query += " AND campaign_id = ?"
+            params.append(campaign_id)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+            
+        query += " ORDER BY added_at DESC"
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_mailing_list_contact(contact_id: int) -> Optional[Dict]:
+    """Get a single mailing list contact."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM mailing_list WHERE id = ?", (contact_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_mailing_list_contact(contact_id: int, **kwargs) -> bool:
+    """Update a mailing list contact."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        updates = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [contact_id]
+        cursor.execute(f"UPDATE mailing_list SET {updates} WHERE id = ?", values)
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_mailing_list_contact(contact_id: int) -> bool:
+    """Delete a contact from mailing list."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM mailing_list WHERE id = ?", (contact_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def clear_mailing_list(campaign_id: int = None) -> int:
+    """Clear mailing list (optionally for a specific campaign)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if campaign_id:
+            cursor.execute("DELETE FROM mailing_list WHERE campaign_id = ?", (campaign_id,))
+        else:
+            cursor.execute("DELETE FROM mailing_list")
+        conn.commit()
+        return cursor.rowcount
+
+
+def get_mailing_list_stats() -> Dict:
+    """Get mailing list statistics."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM mailing_list")
+        total = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM mailing_list WHERE status = 'pending'")
+        pending = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM mailing_list WHERE status = 'sent'")
+        sent = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM mailing_list WHERE status = 'replied'")
+        replied = cursor.fetchone()[0]
+        
+        return {
+            "total": total,
+            "pending": pending,
+            "sent": sent,
+            "replied": replied
         }
