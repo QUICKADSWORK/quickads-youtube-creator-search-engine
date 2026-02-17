@@ -350,7 +350,7 @@
                         <div class="w-3 h-3 bg-white rounded-full animate-pulse mr-3"></div>
                         <div>
                             <p class="font-semibold">🔴 LIVE - Auto-Negotiation Mode: ACTIVE</p>
-                            <p class="text-sm text-green-100">Dashboard refreshes every 30s • Inbox checked every 2 min • AI auto-responds</p>
+                            <p class="text-sm text-green-100">Dashboard auto-refreshes • Backend checks inbox every 5 min • AI auto-responds</p>
                         </div>
                     </div>
                     <div class="flex space-x-2">
@@ -2953,21 +2953,24 @@ emma.lifestyle@gmail.com"></textarea>
         let autoRefreshInterval = null;
         let lastDataHash = '';
         
+        let isRefreshing = false;
+        
         function startAutoRefresh() {
-            // Refresh every 30 seconds
+            // Refresh dashboard every 60 seconds (was 30)
             autoRefreshInterval = setInterval(async () => {
-                await refreshDashboard();
-            }, 30000);
+                if (!isRefreshing) {
+                    await refreshDashboard();
+                }
+            }, 60000);
             
-            // Also check for new replies every 2 minutes
-            setInterval(async () => {
-                await checkForNewReplies();
-            }, 120000);
-            
-            console.log('Auto-refresh started: Dashboard every 30s, Inbox check every 2m');
+            console.log('Auto-refresh started: Dashboard every 60s');
+            // Note: Inbox checking disabled on frontend - handled by backend scheduler
         }
         
         async function refreshDashboard() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+            
             const activeTab = document.querySelector('.tab-btn.active')?.textContent?.trim() || '';
             
             try {
@@ -2985,20 +2988,37 @@ emma.lifestyle@gmail.com"></textarea>
                 
             } catch (error) {
                 console.error('Auto-refresh error:', error);
+            } finally {
+                isRefreshing = false;
             }
         }
         
         async function checkForNewReplies() {
+            // Only call when user explicitly clicks the button
             try {
-                const response = await fetch('/api/auto-negotiator/run', { method: 'POST' });
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+                
+                const response = await fetch('/api/auto-negotiator/run', { 
+                    method: 'POST',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
                 const result = await response.json();
                 
                 if (result.processed > 0) {
                     showToast(`${result.processed} new replies processed!`, 'success');
                     await refreshDashboard();
                 }
+                return result;
             } catch (error) {
-                console.error('Inbox check error:', error);
+                if (error.name === 'AbortError') {
+                    console.error('Inbox check timed out');
+                } else {
+                    console.error('Inbox check error:', error);
+                }
+                return { processed: 0 };
             }
         }
         
