@@ -1136,6 +1136,56 @@ emma.lifestyle@gmail.com"></textarea>
         </div>
     </div>
 
+    <!-- Campaign Detail Modal (Conversations) -->
+    <div id="campaign-detail-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-xl w-full max-w-4xl mx-4 my-8 fade-in max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-900" id="campaign-detail-name">Campaign</h3>
+                        <p class="text-sm text-gray-500 mt-1" id="campaign-detail-brief">Brief</p>
+                    </div>
+                    <button onclick="hideCampaignDetailModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <h4 class="font-medium text-gray-900 mb-4">Email Conversations</h4>
+                <div id="campaign-outreach-list">
+                    <!-- Outreach emails will be loaded here -->
+                </div>
+            </div>
+            
+            <div class="p-4 border-t bg-gray-50 rounded-b-xl">
+                <button onclick="hideCampaignDetailModal()" 
+                    class="w-full px-4 py-2 text-gray-700 bg-white border rounded-lg hover:bg-gray-100">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reply Input Modal -->
+    <div id="reply-input-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg mx-4 fade-in">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Log Creator's Reply</h3>
+            <p class="text-sm text-gray-500 mb-4">Paste the reply you received from the creator</p>
+            
+            <textarea id="creator-reply-text" rows="6"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                placeholder="Paste the creator's email reply here..."></textarea>
+            
+            <div class="flex justify-end space-x-3 mt-4">
+                <button onclick="hideReplyInputModal()" 
+                    class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+                <button onclick="saveCreatorReply()" 
+                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Save Reply</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Outreach Modal (for sending emails to creators) -->
     <div id="outreach-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 overflow-y-auto">
         <div class="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 my-8 fade-in">
@@ -1926,7 +1976,7 @@ emma.lifestyle@gmail.com"></textarea>
                             <div class="bg-gray-50 px-5 py-3 flex justify-between items-center">
                                 <span class="text-xs text-gray-500">Created: ${formatDate(c.created_at)}</span>
                                 <div class="flex space-x-3">
-                                    <button onclick="viewCampaign(${c.id})" class="text-gray-600 hover:text-gray-800 text-sm">View Details</button>
+                                    <button onclick="viewCampaignDetails(${c.id})" class="text-gray-600 hover:text-gray-800 text-sm">View Conversations</button>
                                     <button onclick="deleteCampaign(${c.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                                     ${c.contacts.filter(x => x.status === 'pending').length > 0 ? `
                                         <button onclick="startCampaign(${c.id})" 
@@ -2012,12 +2062,168 @@ emma.lifestyle@gmail.com"></textarea>
                 const result = await response.json();
                 if (response.ok) {
                     showToast(`Campaign started! Sent ${result.sent} of ${result.total} emails`);
-                    loadCampaigns();
+                    // Small delay then refresh to ensure DB is updated
+                    setTimeout(() => loadCampaigns(), 500);
                 } else {
                     showToast(result.detail || 'Error starting campaign', 'error');
                 }
             } catch (error) {
                 showToast('Error starting campaign', 'error');
+            }
+        }
+        
+        // View Campaign Details with Conversations
+        async function viewCampaignDetails(campaignId) {
+            try {
+                // Get campaign info
+                const campRes = await fetch(`/api/campaigns/${campaignId}`);
+                const campaign = await campRes.json();
+                
+                // Get outreach emails for this campaign
+                const outreachRes = await fetch(`/api/outreach?campaign_id=${campaignId}`);
+                const outreachData = await outreachRes.json();
+                
+                document.getElementById('campaign-detail-name').textContent = campaign.name;
+                document.getElementById('campaign-detail-brief').textContent = campaign.brief || 'No brief';
+                
+                const outreachList = document.getElementById('campaign-outreach-list');
+                
+                if (outreachData.outreach.length === 0) {
+                    outreachList.innerHTML = '<p class="text-gray-500 text-center py-8">No emails sent yet. Add creators and start the campaign.</p>';
+                } else {
+                    outreachList.innerHTML = outreachData.outreach.map(o => `
+                        <div class="border rounded-lg p-4 mb-4 ${o.status === 'replied' ? 'border-green-200 bg-green-50' : 'border-gray-200'}">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="font-medium text-gray-900">${o.recipient_email}</span>
+                                    <span class="ml-2 px-2 py-0.5 text-xs rounded-full ${
+                                        o.status === 'sent' ? 'bg-blue-100 text-blue-800' :
+                                        o.status === 'replied' ? 'bg-green-100 text-green-800' :
+                                        'bg-gray-100 text-gray-800'
+                                    }">${o.status}</span>
+                                </div>
+                                <span class="text-xs text-gray-500">${formatDate(o.sent_at || o.created_at)}</span>
+                            </div>
+                            
+                            <div class="text-sm text-gray-700 mb-2">
+                                <strong>Subject:</strong> ${o.subject}
+                            </div>
+                            
+                            <details class="text-sm">
+                                <summary class="cursor-pointer text-purple-600 hover:text-purple-800">View Email Content</summary>
+                                <div class="mt-2 p-3 bg-white rounded border text-gray-600 whitespace-pre-wrap">${o.body}</div>
+                            </details>
+                            
+                            ${o.reply_content ? `
+                                <div class="mt-3 p-3 bg-green-100 rounded-lg">
+                                    <p class="text-xs text-green-800 font-medium mb-1">Creator's Reply:</p>
+                                    <p class="text-sm text-green-900">${o.reply_content}</p>
+                                </div>
+                            ` : ''}
+                            
+                            ${o.ai_response ? `
+                                <div class="mt-2 p-3 bg-purple-50 rounded-lg">
+                                    <p class="text-xs text-purple-800 font-medium mb-1">AI Follow-up Sent:</p>
+                                    <p class="text-sm text-purple-900">${o.ai_response}</p>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="mt-3 flex space-x-2">
+                                <button onclick="showReplyInput(${o.id})" 
+                                    class="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">
+                                    Log Creator Reply
+                                </button>
+                                ${o.reply_content && !o.ai_response ? `
+                                    <button onclick="generateAIResponse(${o.id})" 
+                                        class="text-xs bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700">
+                                        Generate AI Response
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                document.getElementById('campaign-detail-modal').classList.remove('hidden');
+                document.getElementById('campaign-detail-modal').classList.add('flex');
+                
+            } catch (error) {
+                console.error('Error loading campaign details:', error);
+                showToast('Error loading campaign details', 'error');
+            }
+        }
+        
+        function hideCampaignDetailModal() {
+            document.getElementById('campaign-detail-modal').classList.add('hidden');
+            document.getElementById('campaign-detail-modal').classList.remove('flex');
+        }
+        
+        let currentReplyOutreachId = null;
+        
+        function showReplyInput(outreachId) {
+            currentReplyOutreachId = outreachId;
+            document.getElementById('reply-input-modal').classList.remove('hidden');
+            document.getElementById('reply-input-modal').classList.add('flex');
+        }
+        
+        function hideReplyInputModal() {
+            document.getElementById('reply-input-modal').classList.add('hidden');
+            document.getElementById('reply-input-modal').classList.remove('flex');
+            document.getElementById('creator-reply-text').value = '';
+            currentReplyOutreachId = null;
+        }
+        
+        async function saveCreatorReply() {
+            const replyText = document.getElementById('creator-reply-text').value;
+            
+            if (!replyText.trim()) {
+                showToast('Please enter the reply content', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/outreach/${currentReplyOutreachId}/reply`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reply_content: replyText })
+                });
+                
+                if (response.ok) {
+                    showToast('Reply logged successfully!');
+                    hideReplyInputModal();
+                    // Refresh the campaign details
+                    const modal = document.getElementById('campaign-detail-modal');
+                    if (!modal.classList.contains('hidden')) {
+                        // Get campaign ID from somewhere and refresh
+                        loadCampaigns();
+                    }
+                } else {
+                    showToast('Error saving reply', 'error');
+                }
+            } catch (error) {
+                showToast('Error saving reply', 'error');
+            }
+        }
+        
+        async function generateAIResponse(outreachId) {
+            showToast('Generating AI response...', 'info');
+            
+            try {
+                const response = await fetch(`/api/outreach/${outreachId}/negotiate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    showToast('AI response generated and sent!');
+                    loadCampaigns();
+                } else {
+                    showToast(result.detail || 'Error generating response', 'error');
+                }
+            } catch (error) {
+                showToast('Error generating AI response', 'error');
             }
         }
         

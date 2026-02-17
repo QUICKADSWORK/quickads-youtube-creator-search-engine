@@ -629,32 +629,73 @@ async def get_outreach_detail(outreach_id: int):
     return {"outreach": outreach, "thread": thread}
 
 
-@app.post("/api/outreach/{outreach_id}/negotiate")
-async def handle_negotiation(outreach_id: int, request: NegotiationRequest):
-    """Handle a creator's response with AI negotiation."""
+class ReplyInput(BaseModel):
+    reply_content: str
+
+
+@app.post("/api/outreach/{outreach_id}/reply")
+async def log_creator_reply(outreach_id: int, request: ReplyInput):
+    """Log a creator's reply (without generating AI response)."""
     outreach = db.get_outreach(outreach_id)
     if not outreach:
         raise HTTPException(status_code=404, detail="Outreach not found")
     
-    campaign = db.get_campaign(outreach['campaign_id'])
-    thread = db.get_email_thread(outreach_id)
-    
-    # Add creator's response to thread
+    # Add to email thread
     db.add_email_thread(
         outreach_id=outreach_id,
         direction='inbound',
         subject=f"Re: {outreach['subject']}",
-        body=request.creator_response
+        body=request.reply_content
     )
     
-    # Update status
-    db.update_outreach(outreach_id, status='replied', reply_content=request.creator_response)
+    # Update outreach status
+    db.update_outreach(outreach_id, status='replied', reply_content=request.reply_content)
+    
+    # Update mailing list contact status if exists
+    try:
+        contacts = db.get_mailing_list(campaign_id=outreach.get('campaign_id'))
+        for contact in contacts:
+            if contact.get('outreach_id') == outreach_id:
+                db.update_mailing_list_contact(contact['id'], status='replied')
+                break
+    except:
+        pass
+    
+    return {"success": True, "message": "Reply logged successfully"}
+
+
+@app.post("/api/outreach/{outreach_id}/negotiate")
+async def handle_negotiation(outreach_id: int, request: NegotiationRequest = None):
+    """Generate AI response for a creator's reply."""
+    outreach = db.get_outreach(outreach_id)
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    
+    # Use stored reply_content if no new response provided
+    creator_response = outreach.get('reply_content', '')
+    if request and request.creator_response:
+        creator_response = request.creator_response
+        # Add creator's response to thread
+        db.add_email_thread(
+            outreach_id=outreach_id,
+            direction='inbound',
+            subject=f"Re: {outreach['subject']}",
+            body=creator_response
+        )
+        # Update status
+        db.update_outreach(outreach_id, status='replied', reply_content=creator_response)
+    
+    if not creator_response:
+        raise HTTPException(status_code=400, detail="No creator reply found. Log the reply first.")
+    
+    campaign = db.get_campaign(outreach['campaign_id'])
+    thread = db.get_email_thread(outreach_id)
     
     # Generate AI response
     try:
         ai_response = ai_outreach.generate_negotiation_response(
             conversation_history=[{"direction": t['direction'], "body": t['body']} for t in thread],
-            creator_response=request.creator_response,
+            creator_response=creator_response,
             campaign_brief=campaign.get('brief', ''),
             budget_min=campaign.get('budget_min', 0),
             budget_max=campaign.get('budget_max', 0),
@@ -663,10 +704,26 @@ async def handle_negotiation(outreach_id: int, request: NegotiationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-    # Update negotiation stage
+    # Update negotiation stage and AI response
     db.update_outreach(outreach_id, 
                        negotiation_stage=ai_response.get('new_stage', 'negotiating'),
                        ai_response=ai_response.get('response_body', ''))
+    
+    # Send the AI response email
+    account = email_service.get_available_account()
+    if account:
+        email_service.send_email(
+            account_id=account["id"],
+            to_email=outreach["recipient_email"],
+            subject=f"Re: {outreach['subject']}",
+            body=ai_response.get('response_body', '')
+        )
+        db.add_email_thread(
+            outreach_id=outreach_id,
+            direction='outbound',
+            subject=f"Re: {outreach['subject']}",
+            body=ai_response.get('response_body', '')
+        )
     
     return {
         "success": True,
