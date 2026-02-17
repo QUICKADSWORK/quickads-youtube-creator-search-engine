@@ -992,55 +992,55 @@ async def send_to_mailing_list(req: BulkSendRequest):
             raise HTTPException(status_code=400, detail="No email accounts available. Please add an email account first.")
         
         print(f"Using email account: {account.get('email')}")
-    
-    sent_count = 0
-    errors = []
-    
-    for contact in contacts:
-        try:
-            # Generate AI email for this contact
-            email_content = ai_outreach.generate_outreach_email(
-                creator_name=contact["name"],
-                channel_title=contact.get("channel_title") or contact["name"],
-                subscribers=contact.get("subscribers") or 0,
-                content_focus="content creation",
-                campaign_brief=campaign["brief"] or "",
-                budget_min=campaign.get("budget_min") or 100,
-                budget_max=campaign.get("budget_max") or 500,
-                topic=campaign.get("topic") or "",
-                requirements=campaign.get("requirements") or "",
-                deadline=campaign.get("deadline") or "",
-                sender_name=account.get("display_name") or "Marketing Team"
-            )
-            
-            # Create outreach record
-            outreach_id = db.create_outreach(
-                campaign_id=req.campaign_id,
-                channel_id=contact.get("channel_id"),
-                recipient_email=contact["email"],
-                email_account_id=account["id"],
-                subject=email_content["subject"],
-                body=email_content["body"]
-            )
-            
-            # Send email
-            success, message = email_service.send_email(
-                account_id=account["id"],
-                to_email=contact["email"],
-                subject=email_content["subject"],
-                body=email_content["body"]
-            )
-            
-            if success:
-                db.mark_outreach_sent(outreach_id, account["id"])
-                db.update_mailing_list_contact(contact["id"], status="sent", outreach_id=outreach_id)
-                sent_count += 1
-            else:
-                errors.append({"email": contact["email"], "error": message})
+        
+        sent_count = 0
+        errors = []
+        
+        for contact in contacts:
+            try:
+                # Generate AI email for this contact
+                email_content = ai_outreach.generate_outreach_email(
+                    creator_name=contact["name"],
+                    channel_title=contact.get("channel_title") or contact["name"],
+                    subscribers=contact.get("subscribers") or 0,
+                    content_focus="content creation",
+                    campaign_brief=campaign["brief"] or "",
+                    budget_min=campaign.get("budget_min") or 100,
+                    budget_max=campaign.get("budget_max") or 500,
+                    topic=campaign.get("topic") or "",
+                    requirements=campaign.get("requirements") or "",
+                    deadline=campaign.get("deadline") or "",
+                    sender_name=account.get("display_name") or "Marketing Team"
+                )
                 
-        except Exception as e:
-            errors.append({"email": contact["email"], "error": str(e)})
-    
+                # Create outreach record
+                outreach_id = db.create_outreach(
+                    campaign_id=req.campaign_id,
+                    channel_id=contact.get("channel_id"),
+                    recipient_email=contact["email"],
+                    email_account_id=account["id"],
+                    subject=email_content["subject"],
+                    body=email_content["body"]
+                )
+                
+                # Send email
+                success, message = email_service.send_email(
+                    account_id=account["id"],
+                    to_email=contact["email"],
+                    subject=email_content["subject"],
+                    body=email_content["body"]
+                )
+                
+                if success:
+                    db.mark_outreach_sent(outreach_id, account["id"])
+                    db.update_mailing_list_contact(contact["id"], status="sent", outreach_id=outreach_id)
+                    sent_count += 1
+                else:
+                    errors.append({"email": contact["email"], "error": message})
+                    
+            except Exception as e:
+                errors.append({"email": contact["email"], "error": str(e)})
+        
         print(f"Campaign send complete: {sent_count}/{len(contacts)} sent")
         return {
             "success": True,
