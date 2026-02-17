@@ -518,6 +518,8 @@ def init_email_tables():
                 brief TEXT,
                 budget_min REAL,
                 budget_max REAL,
+                max_offer REAL DEFAULT 500,
+                offer_increment REAL DEFAULT 50,
                 topic TEXT,
                 requirements TEXT,
                 deadline TEXT,
@@ -544,6 +546,8 @@ def init_email_tables():
                 reply_content TEXT,
                 ai_response TEXT,
                 negotiation_stage TEXT DEFAULT 'initial',
+                current_offer REAL DEFAULT 0,
+                negotiation_rounds INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
                 FOREIGN KEY (email_account_id) REFERENCES email_accounts(id)
@@ -670,16 +674,17 @@ def reset_daily_email_counts():
 # ============================================================
 
 def create_campaign(name: str, brief: str = "", budget_min: float = 0, 
-                   budget_max: float = 0, topic: str = "", 
+                   budget_max: float = 0, max_offer: float = 500,
+                   offer_increment: float = 50, topic: str = "", 
                    requirements: str = "", deadline: str = "") -> int:
     """Create a new campaign."""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO campaigns 
-            (name, brief, budget_min, budget_max, topic, requirements, deadline, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')
-        """, (name, brief, budget_min, budget_max, topic, requirements, deadline))
+            (name, brief, budget_min, budget_max, max_offer, offer_increment, topic, requirements, deadline, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+        """, (name, brief, budget_min, budget_max, max_offer, offer_increment, topic, requirements, deadline))
         conn.commit()
         return cursor.lastrowid
 

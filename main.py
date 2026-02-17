@@ -308,6 +308,8 @@ class CampaignCreate(BaseModel):
     brief: str = ""
     budget_min: float = 0
     budget_max: float = 0
+    max_offer: float = 500
+    offer_increment: float = 50
     topic: str = ""
     requirements: str = ""
     deadline: str = ""
@@ -318,6 +320,8 @@ class CampaignUpdate(BaseModel):
     brief: Optional[str] = None
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
+    max_offer: Optional[float] = None
+    offer_increment: Optional[float] = None
     topic: Optional[str] = None
     requirements: Optional[str] = None
     deadline: Optional[str] = None
@@ -519,6 +523,8 @@ async def create_campaign(campaign: CampaignCreate):
         brief=campaign.brief,
         budget_min=campaign.budget_min,
         budget_max=campaign.budget_max,
+        max_offer=campaign.max_offer,
+        offer_increment=campaign.offer_increment,
         topic=campaign.topic,
         requirements=campaign.requirements,
         deadline=campaign.deadline
