@@ -844,6 +844,7 @@ async def send_to_mailing_list(req: BulkSendRequest):
                 campaign_id=req.campaign_id,
                 channel_id=contact.get("channel_id"),
                 recipient_email=contact["email"],
+                email_account_id=account["id"],
                 subject=email_content["subject"],
                 body=email_content["body"]
             )
