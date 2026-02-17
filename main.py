@@ -809,6 +809,50 @@ async def run_auto_negotiator_now():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/debug/outreach/{email}")
+async def debug_outreach_by_email(email: str):
+    """Debug endpoint to check outreach status for a specific email."""
+    # Get all outreach emails
+    all_outreach = db.get_outreach_emails()
+    
+    # Find matching ones
+    matching = []
+    for o in all_outreach:
+        if o.get('recipient_email', '').lower() == email.lower():
+            # Get thread info
+            thread = db.get_email_thread(o['id'])
+            thread_stats = db.get_thread_stats(o['id'])
+            matching.append({
+                "outreach_id": o['id'],
+                "recipient_email": o['recipient_email'],
+                "status": o.get('status'),
+                "negotiation_stage": o.get('negotiation_stage'),
+                "current_offer": o.get('current_offer'),
+                "negotiation_rounds": o.get('negotiation_rounds'),
+                "followup_count": o.get('followup_count'),
+                "reply_content": o.get('reply_content', '')[:200] if o.get('reply_content') else None,
+                "thread_messages": len(thread),
+                "thread_stats": thread_stats,
+                "sent_at": o.get('sent_at'),
+                "campaign_id": o.get('campaign_id')
+            })
+    
+    # Check if processed
+    processed = []
+    with db.get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM processed_emails WHERE from_email LIKE ?", (f"%{email}%",))
+        for row in cursor.fetchall():
+            processed.append(dict(row))
+    
+    return {
+        "email": email,
+        "outreach_records": matching,
+        "processed_emails": processed,
+        "found_count": len(matching)
+    }
+
+
 # ============ Mailing List Endpoints ============
 
 class MailingListContact(BaseModel):
