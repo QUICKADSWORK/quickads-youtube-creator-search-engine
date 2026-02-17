@@ -798,15 +798,22 @@ def update_outreach(outreach_id: int, **kwargs) -> bool:
         return cursor.rowcount > 0
 
 
-def mark_outreach_sent(outreach_id: int):
+def mark_outreach_sent(outreach_id: int, email_account_id: int = None):
     """Mark an outreach email as sent."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE outreach_emails 
-            SET status = 'sent', sent_at = ?
-            WHERE id = ?
-        """, (datetime.now(), outreach_id))
+        if email_account_id:
+            cursor.execute("""
+                UPDATE outreach_emails 
+                SET status = 'sent', sent_at = ?, email_account_id = ?
+                WHERE id = ?
+            """, (datetime.now(), email_account_id, outreach_id))
+        else:
+            cursor.execute("""
+                UPDATE outreach_emails 
+                SET status = 'sent', sent_at = ?
+                WHERE id = ?
+            """, (datetime.now(), outreach_id))
         conn.commit()
 
 
