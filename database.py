@@ -612,72 +612,34 @@ def migrate_database(conn):
     """Add missing columns to existing tables (for upgrades)."""
     cursor = conn.cursor()
     
-    # Check and add columns to campaigns table
-    try:
-        cursor.execute("SELECT max_offer FROM campaigns LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE campaigns ADD COLUMN max_offer REAL DEFAULT 500")
-            print("Added max_offer column to campaigns")
-        except:
-            pass
+    def column_exists(table, column):
+        """Check if a column exists in a table using SQLite pragma."""
+        cursor.execute(f"PRAGMA table_info({table})")
+        columns = [row[1] for row in cursor.fetchall()]
+        return column in columns
     
-    try:
-        cursor.execute("SELECT offer_increment FROM campaigns LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE campaigns ADD COLUMN offer_increment REAL DEFAULT 50")
-            print("Added offer_increment column to campaigns")
-        except:
-            pass
+    def add_column_if_missing(table, column, col_type, default=None):
+        """Add column if it doesn't exist."""
+        if not column_exists(table, column):
+            default_clause = f" DEFAULT {default}" if default is not None else ""
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}{default_clause}")
+                print(f"Added {column} column to {table}")
+            except Exception as e:
+                print(f"Error adding {column} to {table}: {e}")
     
-    # Check and add columns to outreach_emails table
-    try:
-        cursor.execute("SELECT current_offer FROM outreach_emails LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN current_offer REAL DEFAULT 0")
-            print("Added current_offer column to outreach_emails")
-        except:
-            pass
+    # Add missing columns to campaigns table
+    add_column_if_missing('campaigns', 'max_offer', 'REAL', 500)
+    add_column_if_missing('campaigns', 'offer_increment', 'REAL', 50)
     
-    try:
-        cursor.execute("SELECT negotiation_rounds FROM outreach_emails LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN negotiation_rounds INTEGER DEFAULT 0")
-            print("Added negotiation_rounds column to outreach_emails")
-        except:
-            pass
+    # Add missing columns to outreach_emails table
+    add_column_if_missing('outreach_emails', 'current_offer', 'REAL', 0)
+    add_column_if_missing('outreach_emails', 'negotiation_rounds', 'INTEGER', 0)
+    add_column_if_missing('outreach_emails', 'followup_count', 'INTEGER', 0)
+    add_column_if_missing('outreach_emails', 'last_followup_at', 'TIMESTAMP', None)
+    add_column_if_missing('outreach_emails', 'last_inbound_at', 'TIMESTAMP', None)
     
-    try:
-        cursor.execute("SELECT followup_count FROM outreach_emails LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN followup_count INTEGER DEFAULT 0")
-            print("Added followup_count column to outreach_emails")
-        except:
-            pass
-    
-    try:
-        cursor.execute("SELECT last_followup_at FROM outreach_emails LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN last_followup_at TIMESTAMP")
-            print("Added last_followup_at column to outreach_emails")
-        except:
-            pass
-    
-    try:
-        cursor.execute("SELECT last_inbound_at FROM outreach_emails LIMIT 1")
-    except:
-        try:
-            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN last_inbound_at TIMESTAMP")
-            print("Added last_inbound_at column to outreach_emails")
-        except:
-            pass
-    
-    # Check and add processed_emails table
+    # Create processed_emails table if it doesn't exist
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS processed_emails (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -690,6 +652,7 @@ def migrate_database(conn):
     """)
     
     conn.commit()
+    print("Database migration complete.")
 
 
 def add_email_account(email: str, smtp_host: str, smtp_port: int, 

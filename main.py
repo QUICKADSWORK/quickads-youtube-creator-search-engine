@@ -105,6 +105,12 @@ class SearchQueryUpdate(BaseModel):
 
 
 # Routes
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint."""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Render the main dashboard."""
@@ -518,18 +524,22 @@ async def get_campaigns(status: Optional[str] = None):
 @app.post("/api/campaigns")
 async def create_campaign(campaign: CampaignCreate):
     """Create a new campaign."""
-    campaign_id = db.create_campaign(
-        name=campaign.name,
-        brief=campaign.brief,
-        budget_min=campaign.budget_min,
-        budget_max=campaign.budget_max,
-        max_offer=campaign.max_offer,
-        offer_increment=campaign.offer_increment,
-        topic=campaign.topic,
-        requirements=campaign.requirements,
-        deadline=campaign.deadline
-    )
-    return {"success": True, "id": campaign_id}
+    try:
+        campaign_id = db.create_campaign(
+            name=campaign.name,
+            brief=campaign.brief,
+            budget_min=campaign.budget_min,
+            budget_max=campaign.budget_max,
+            max_offer=campaign.max_offer,
+            offer_increment=campaign.offer_increment,
+            topic=campaign.topic,
+            requirements=campaign.requirements,
+            deadline=campaign.deadline
+        )
+        return {"success": True, "id": campaign_id}
+    except Exception as e:
+        print(f"Error creating campaign: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create campaign: {str(e)}")
 
 
 @app.get("/api/campaigns/{campaign_id}")
