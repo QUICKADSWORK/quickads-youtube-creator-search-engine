@@ -603,6 +603,93 @@ def init_email_tables():
         """)
         
         conn.commit()
+        
+        # Run migrations to add new columns to existing tables
+        migrate_database(conn)
+
+
+def migrate_database(conn):
+    """Add missing columns to existing tables (for upgrades)."""
+    cursor = conn.cursor()
+    
+    # Check and add columns to campaigns table
+    try:
+        cursor.execute("SELECT max_offer FROM campaigns LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE campaigns ADD COLUMN max_offer REAL DEFAULT 500")
+            print("Added max_offer column to campaigns")
+        except:
+            pass
+    
+    try:
+        cursor.execute("SELECT offer_increment FROM campaigns LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE campaigns ADD COLUMN offer_increment REAL DEFAULT 50")
+            print("Added offer_increment column to campaigns")
+        except:
+            pass
+    
+    # Check and add columns to outreach_emails table
+    try:
+        cursor.execute("SELECT current_offer FROM outreach_emails LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN current_offer REAL DEFAULT 0")
+            print("Added current_offer column to outreach_emails")
+        except:
+            pass
+    
+    try:
+        cursor.execute("SELECT negotiation_rounds FROM outreach_emails LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN negotiation_rounds INTEGER DEFAULT 0")
+            print("Added negotiation_rounds column to outreach_emails")
+        except:
+            pass
+    
+    try:
+        cursor.execute("SELECT followup_count FROM outreach_emails LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN followup_count INTEGER DEFAULT 0")
+            print("Added followup_count column to outreach_emails")
+        except:
+            pass
+    
+    try:
+        cursor.execute("SELECT last_followup_at FROM outreach_emails LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN last_followup_at TIMESTAMP")
+            print("Added last_followup_at column to outreach_emails")
+        except:
+            pass
+    
+    try:
+        cursor.execute("SELECT last_inbound_at FROM outreach_emails LIMIT 1")
+    except:
+        try:
+            cursor.execute("ALTER TABLE outreach_emails ADD COLUMN last_inbound_at TIMESTAMP")
+            print("Added last_inbound_at column to outreach_emails")
+        except:
+            pass
+    
+    # Check and add processed_emails table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS processed_emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT UNIQUE,
+            from_email TEXT,
+            subject TEXT,
+            body_hash TEXT,
+            processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    conn.commit()
 
 
 def add_email_account(email: str, smtp_host: str, smtp_port: int, 
