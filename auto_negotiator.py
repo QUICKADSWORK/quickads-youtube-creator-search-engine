@@ -1,17 +1,146 @@
 """
-Auto Negotiator - Automatically handles email replies and AI negotiation
+Auto Negotiator - Handles email replies with smart negotiation
+- Duplicate detection via message hash
+- Max 2 follow-ups in 6 hours (stops on any reply)
+- Smart counter-offer strategy
+- Varied response templates
 """
 import imaplib
 import email
+import hashlib
+import random
 from email.header import decode_header
 import re
-import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 import database as db
 import email_service
 import ai_outreach
 
+# ============================================================
+# RESPONSE TEMPLATES FOR VARIATION
+# ============================================================
+
+NEGOTIATION_TEMPLATES = [
+    """Thanks for getting back to me! I really appreciate you sharing your rates.
+
+After checking with our team, we can go up to ${offer} for this collaboration. 
+
+{extra_line}
+
+Would this work for you?
+
+Best,
+{sender}""",
+
+    """Appreciate the quick response!
+
+I've discussed with our budget team and we can offer ${offer}. {extra_line}
+
+Let me know if that works!
+
+Cheers,
+{sender}""",
+
+    """Thanks for your response!
+
+We'd love to make this work. Our best offer is ${offer}. {extra_line}
+
+What do you think?
+
+Best regards,
+{sender}""",
+
+    """Great hearing from you!
+
+I spoke with our team and we can do ${offer} for this project. {extra_line}
+
+Does that work on your end?
+
+Thanks,
+{sender}"""
+]
+
+COUNTER_OFFER_EXTRAS = [
+    "We're flexible on deliverables if that helps.",
+    "Happy to discuss the content scope to make it work.",
+    "We can be flexible on timeline if needed.",
+    "Open to adjusting requirements to fit the budget.",
+    "Can discuss reducing deliverables to meet your rate."
+]
+
+ACCEPTANCE_TEMPLATES = [
+    """Awesome! Let's do ${amount} - really excited to work together!
+
+Our team will send over the brief and payment details shortly.
+
+Looking forward to this collab!
+
+Best,
+{sender}""",
+
+    """Perfect, ${amount} works great! Super excited about this partnership.
+
+You'll receive the content brief and payment info soon.
+
+Can't wait to see what you create!
+
+Cheers,
+{sender}""",
+
+    """${amount} sounds good - we have a deal!
+
+I'll get the brief and payment details over to you ASAP.
+
+Excited to collaborate!
+
+Thanks,
+{sender}"""
+]
+
+FINAL_OFFER_TEMPLATES = [
+    """I really want to make this work!
+
+${offer} is genuinely the highest we can go for this campaign - it's our absolute max budget.
+
+If this works, I'd love to move forward. If not, totally understand!
+
+Let me know either way.
+
+Best,
+{sender}""",
+
+    """Thanks for your patience in discussing this!
+
+I've pushed internally and ${offer} is truly our ceiling for this project.
+
+Would love to work together if this fits your rate. No pressure either way!
+
+Cheers,
+{sender}"""
+]
+
+GOODBYE_TEMPLATES = [
+    """Thanks for considering our offer!
+
+Totally understand. If things change or you're interested in future projects, hit me up anytime.
+
+Best of luck with your content!
+
+{sender}""",
+
+    """No worries at all!
+
+Appreciate you taking the time to chat. Feel free to reach out if you'd like to collaborate down the road.
+
+Keep creating great stuff!
+
+{sender}"""
+]
+
+# ============================================================
+# IMAP CONFIGURATION
+# ============================================================
 
 def get_imap_config(email_addr: str) -> Dict:
     """Get IMAP config based on email provider."""
@@ -19,13 +148,12 @@ def get_imap_config(email_addr: str) -> Dict:
     
     configs = {
         'gmail.com': {'host': 'imap.gmail.com', 'port': 993},
-        'quickads.ai': {'host': 'imap.gmail.com', 'port': 993},  # Google Workspace
+        'quickads.ai': {'host': 'imap.gmail.com', 'port': 993},
         'outlook.com': {'host': 'imap-mail.outlook.com', 'port': 993},
         'hotmail.com': {'host': 'imap-mail.outlook.com', 'port': 993},
         'yahoo.com': {'host': 'imap.mail.yahoo.com', 'port': 993},
     }
     
-    # Default to Gmail for Google Workspace domains
     return configs.get(domain, {'host': 'imap.gmail.com', 'port': 993})
 
 
@@ -40,6 +168,10 @@ def connect_imap(email_addr: str, password: str) -> Optional[imaplib.IMAP4_SSL]:
         print(f"IMAP connection error: {e}")
         return None
 
+
+# ============================================================
+# EMAIL PARSING UTILITIES
+# ============================================================
 
 def extract_email_body(msg) -> str:
     """Extract text body from email message."""
@@ -60,11 +192,10 @@ def extract_email_body(msg) -> str:
         except:
             body = str(msg.get_payload())
     
-    # Clean up the body - remove quoted replies
+    # Clean up - remove quoted replies
     lines = body.split('\n')
     clean_lines = []
     for line in lines:
-        # Stop at common reply indicators
         if line.strip().startswith('>') or 'wrote:' in line.lower():
             break
         if 'From:' in line and '@' in line:
@@ -91,23 +222,30 @@ def decode_subject(subject) -> str:
     return result
 
 
+def get_body_hash(body: str) -> str:
+    """Create a hash of the email body for duplicate detection."""
+    # Normalize: lowercase, remove extra whitespace
+    normalized = ' '.join(body.lower().split())
+    return hashlib.md5(normalized.encode()).hexdigest()
+
+
+# ============================================================
+# OUTREACH MATCHING
+# ============================================================
+
 def find_matching_outreach(from_email: str, subject: str) -> Optional[Dict]:
     """Find the outreach email this is a reply to."""
-    # Get all sent outreach emails
     outreach_list = db.get_outreach_emails(status='sent')
-    
-    # Also check replied ones (for ongoing conversations)
     replied_list = db.get_outreach_emails(status='replied')
     outreach_list.extend(replied_list)
     
     # Clean the from email
     from_email_clean = from_email.lower().strip()
     if '<' in from_email_clean:
-        from_email_clean = re.search(r'<(.+?)>', from_email_clean)
-        if from_email_clean:
-            from_email_clean = from_email_clean.group(1)
+        match = re.search(r'<(.+?)>', from_email_clean)
+        if match:
+            from_email_clean = match.group(1)
     
-    # Find matching outreach by recipient email
     for outreach in outreach_list:
         if outreach['recipient_email'].lower() == from_email_clean:
             return outreach
@@ -115,95 +253,243 @@ def find_matching_outreach(from_email: str, subject: str) -> Optional[Dict]:
     return None
 
 
-def analyze_deal_status(reply_text: str, campaign: Dict, current_offer: float = 0) -> Dict:
-    """Use AI to analyze if the reply indicates deal acceptance or explicit rejection."""
+# ============================================================
+# AI ANALYSIS
+# ============================================================
+
+def analyze_reply(reply_text: str, campaign: Dict, current_offer: float) -> Dict:
+    """Use AI to analyze creator's reply."""
     try:
         client = ai_outreach.get_client()
         if not client:
-            return {"accepted": False, "needs_negotiation": True, "explicit_no": False}
+            return {"needs_negotiation": True}
         
         max_offer = campaign.get('max_offer', 500)
+        budget_min = campaign.get('budget_min', 100)
         
         prompt = f"""Analyze this creator's reply to a sponsorship offer.
 
-Our Current Offer: ${current_offer if current_offer > 0 else campaign.get('budget_min', 100)}
+Our Current Offer: ${current_offer if current_offer > 0 else budget_min}
 Our Max Budget: ${max_offer}
-Campaign Topic: {campaign.get('topic', 'Not specified')}
 
 Creator's Reply:
 {reply_text}
 
-CRITICAL RULES FOR "explicit_no":
-- "explicit_no" = TRUE ONLY if creator uses phrases like:
-  * "no", "not interested", "can't collaborate", "won't be able to", "not possible"
-  * "decline", "pass on this", "not for me", "sorry can't do it"
-  * Clear refusal to work together at ANY price
-- "explicit_no" = FALSE if they:
-  * Ask for more money (that's negotiation!)
-  * Express interest but want higher rate
-  * Counter-offer with their own price
-  * Say "I charge X" or "my rate is X" (that's a counter-offer, NOT a rejection)
+Determine:
+1. Did they ACCEPT our offer? (Yes only if agreeing to current price)
+2. Did they REJECT/DECLINE completely? (Not interested at ANY price)
+3. Are they COUNTER-OFFERING? (Want more money - extract their ask)
 
-RULES FOR "accepted":
-- "accepted" = TRUE only if they EXPLICITLY agree to our current offer WITHOUT asking for more
+IMPORTANT:
+- "I charge $X" or "My rate is $X" = counter-offer, NOT rejection
+- "Not interested" or "Can't collaborate" = rejection
+- "Sounds good" or "Let's do it" = acceptance
 
-RULES FOR "needs_negotiation":
-- "needs_negotiation" = TRUE if they mention any price/rate/amount they want
-- "needs_negotiation" = TRUE if they ask for more money
-
-Respond in JSON format:
+Respond in JSON:
 {{
     "accepted": true/false,
-    "explicit_no": true/false (ONLY true if clearly refusing to collaborate),
-    "needs_negotiation": true/false,
+    "rejected": true/false,
+    "counter_offer": true/false,
     "requested_amount": null or number,
     "sentiment": "positive"/"neutral"/"negative",
-    "summary": "brief summary"
+    "summary": "one line summary"
 }}"""
 
         response = client.messages.create(
             model="claude-3-haiku-20240307",
-            max_tokens=500,
+            max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
         )
         
         import json
         text = response.content[0].text
-        # Extract JSON from response
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
-            result = json.loads(json_match.group())
-            # Ensure explicit_no exists
-            if 'explicit_no' not in result:
-                result['explicit_no'] = result.get('rejected', False)
-            return result
+            return json.loads(json_match.group())
         
-        return {"accepted": False, "needs_negotiation": True, "explicit_no": False}
+        return {"needs_negotiation": True}
         
     except Exception as e:
-        print(f"Error analyzing deal status: {e}")
-        return {"accepted": False, "needs_negotiation": True, "explicit_no": False}
+        print(f"Error analyzing reply: {e}")
+        return {"needs_negotiation": True}
 
 
-def process_reply(outreach: Dict, reply_body: str, from_email: str) -> Dict:
-    """Process a creator's reply - analyze and auto-respond with incremental offers."""
+# ============================================================
+# SMART NEGOTIATION STRATEGY
+# ============================================================
+
+def calculate_counter_offer(
+    current_offer: float,
+    creator_ask: Optional[float],
+    budget_min: float,
+    max_offer: float,
+    negotiation_round: int
+) -> Dict:
+    """
+    Smart counter-offer strategy:
+    - Start below scale (e.g., if scale shows $650, start at $550)
+    - If they counter, go up gradually
+    - Never exceed max_offer
+    
+    Example: scale=$650, max=$750
+    - Round 1: Offer $550
+    - If they say no → Offer $600
+    - If they counter $750 → Accept at $750
+    """
+    
+    # Calculate our offer progression
+    # Start at ~85% of budget_min, increase by ~10% each round
+    offer_steps = [
+        budget_min * 0.85,  # Round 1: Start low
+        budget_min,          # Round 2: Budget min
+        budget_min * 1.15,   # Round 3: 15% above
+        budget_min * 1.30,   # Round 4: 30% above
+        max_offer * 0.90,    # Round 5: 90% of max
+        max_offer            # Round 6: Final max
+    ]
+    
+    # Get the appropriate offer for this round
+    step_index = min(negotiation_round, len(offer_steps) - 1)
+    base_offer = offer_steps[step_index]
+    
+    # If creator gave a specific ask, adjust strategy
+    if creator_ask:
+        if creator_ask <= max_offer:
+            # They're within our range - we can meet them!
+            # But don't jump all the way - negotiate a bit
+            if creator_ask <= base_offer:
+                # Their ask is below our current offer - accept it!
+                return {
+                    "offer": creator_ask,
+                    "action": "accept",
+                    "message": f"Let's do ${int(creator_ask)}!"
+                }
+            elif creator_ask <= max_offer * 0.95:
+                # Close to max - offer something in between
+                new_offer = min((base_offer + creator_ask) / 2, max_offer)
+                new_offer = round(new_offer / 50) * 50  # Round to $50
+                return {
+                    "offer": new_offer,
+                    "action": "counter",
+                    "message": f"We can do ${int(new_offer)}"
+                }
+            else:
+                # Very close to max - just accept their ask
+                return {
+                    "offer": creator_ask,
+                    "action": "accept",
+                    "message": f"${int(creator_ask)} works - let's do it!"
+                }
+        else:
+            # Their ask exceeds our max
+            if creator_ask <= max_offer * 1.3:
+                # Within 30% over - counter with max
+                return {
+                    "offer": max_offer,
+                    "action": "final_offer",
+                    "message": f"${int(max_offer)} is our absolute max"
+                }
+            else:
+                # Way over budget - politely decline
+                return {
+                    "offer": max_offer,
+                    "action": "decline",
+                    "message": f"${int(creator_ask)} is outside our budget"
+                }
+    
+    # No specific ask - just increase our offer
+    new_offer = min(base_offer, max_offer)
+    new_offer = round(new_offer / 50) * 50
+    
+    if new_offer >= max_offer:
+        return {
+            "offer": max_offer,
+            "action": "final_offer",
+            "message": f"${int(max_offer)} is our max"
+        }
+    
+    return {
+        "offer": new_offer,
+        "action": "counter",
+        "message": f"We can offer ${int(new_offer)}"
+    }
+
+
+# ============================================================
+# EMAIL SENDING WITH VARIATION
+# ============================================================
+
+def send_varied_response(
+    account: Dict,
+    to_email: str,
+    subject: str,
+    response_type: str,
+    offer: float = 0,
+    creator_ask: float = None
+) -> tuple:
+    """Send an email with varied templates to avoid repetition."""
+    
+    sender = account.get('display_name', 'Marketing Team')
+    
+    if response_type == "negotiation":
+        template = random.choice(NEGOTIATION_TEMPLATES)
+        extra = random.choice(COUNTER_OFFER_EXTRAS)
+        body = template.format(
+            offer=int(offer),
+            extra_line=extra,
+            sender=sender
+        )
+        
+    elif response_type == "acceptance":
+        template = random.choice(ACCEPTANCE_TEMPLATES)
+        body = template.format(amount=int(offer), sender=sender)
+        
+    elif response_type == "final_offer":
+        template = random.choice(FINAL_OFFER_TEMPLATES)
+        body = template.format(offer=int(offer), sender=sender)
+        
+    elif response_type == "goodbye":
+        template = random.choice(GOODBYE_TEMPLATES)
+        body = template.format(sender=sender)
+        
+    else:
+        body = f"Thanks for your response!\n\nBest,\n{sender}"
+    
+    return email_service.send_email(
+        account_id=account['id'],
+        to_email=to_email,
+        subject=subject,
+        body=body
+    ), body
+
+
+# ============================================================
+# MAIN REPLY PROCESSING
+# ============================================================
+
+def process_reply(outreach: Dict, reply_body: str, from_email: str, message_id: str) -> Dict:
+    """Process a creator's reply with smart negotiation."""
     outreach_id = outreach['id']
     campaign = db.get_campaign(outreach['campaign_id'])
     
     if not campaign:
         return {"success": False, "error": "Campaign not found"}
     
-    # Get current negotiation state
+    # Get negotiation state
     current_offer = outreach.get('current_offer', 0) or 0
     negotiation_rounds = outreach.get('negotiation_rounds', 0) or 0
     max_offer = campaign.get('max_offer', 500)
-    offer_increment = campaign.get('offer_increment', 50)
+    budget_min = campaign.get('budget_min', 100)
     
-    # Initialize current_offer if this is first interaction
+    # Initialize current_offer
     if current_offer == 0:
-        current_offer = campaign.get('budget_min', 100)
+        current_offer = budget_min
     
-    # Log the reply
+    # Mark email as processed FIRST to prevent duplicates
+    body_hash = get_body_hash(reply_body)
+    db.mark_email_processed(message_id, from_email, outreach['subject'], body_hash)
+    
+    # Log the inbound message
     db.add_email_thread(
         outreach_id=outreach_id,
         direction='inbound',
@@ -211,8 +497,13 @@ def process_reply(outreach: Dict, reply_body: str, from_email: str) -> Dict:
         body=reply_body
     )
     
-    # Update outreach status
-    db.update_outreach(outreach_id, status='replied', reply_content=reply_body)
+    # Update outreach status - MARK REPLIED TO STOP FOLLOW-UPS
+    db.update_outreach(
+        outreach_id, 
+        status='replied', 
+        reply_content=reply_body,
+        last_inbound_at=datetime.now().isoformat()
+    )
     
     # Update mailing list contact
     try:
@@ -225,203 +516,259 @@ def process_reply(outreach: Dict, reply_body: str, from_email: str) -> Dict:
         pass
     
     # Analyze the reply
-    analysis = analyze_deal_status(reply_body, campaign, current_offer)
+    analysis = analyze_reply(reply_body, campaign, current_offer)
     
-    # PRIORITY ORDER:
-    # 1. If they EXPLICITLY say NO (can't collaborate, not interested) -> mark rejected
-    # 2. If they ACCEPT our current offer -> close deal
-    # 3. Otherwise -> KEEP NEGOTIATING with incremental offers until max_offer
+    # Get email account for sending
+    account = email_service.get_available_account()
+    if not account:
+        return {"success": False, "error": "No email account available"}
     
-    # Check for EXPLICIT rejection (creator says no/can't collaborate)
-    if analysis.get('explicit_no'):
+    # Handle REJECTION
+    if analysis.get('rejected'):
         db.update_outreach(outreach_id, negotiation_stage='rejected')
         
-        # Send graceful goodbye
-        account = email_service.get_available_account()
-        if account:
-            goodbye = f"""Thank you for considering our offer!
-
-We completely understand. If your situation changes or you'd like to explore future collaborations, please don't hesitate to reach out.
-
-Best of luck with your content!
-
-Best regards,
-{account.get('display_name', 'Marketing Team')}"""
-            
-            email_service.send_email(
-                account_id=account['id'],
-                to_email=from_email,
-                subject=f"Re: {outreach['subject']}",
-                body=goodbye
-            )
-            
-            db.add_email_thread(
-                outreach_id=outreach_id,
-                direction='outbound',
-                subject=f"Re: {outreach['subject']}",
-                body=goodbye
-            )
-            db.update_outreach(outreach_id, ai_response=goodbye)
-        
-        return {"success": True, "status": "rejected_explicit", "analysis": analysis}
-    
-    # Check if they ACCEPTED our current offer
-    if analysis.get('accepted') and not analysis.get('needs_negotiation'):
-        db.update_outreach(outreach_id, negotiation_stage='deal_closed')
-        
-        # Send confirmation email
-        account = email_service.get_available_account()
-        if account:
-            confirmation = f"""Thank you so much for accepting our collaboration offer at ${current_offer}!
-
-We're excited to work with you. Our team will reach out shortly with the next steps, including:
-- Content brief and guidelines
-- Payment details (${current_offer})
-- Timeline
-
-Looking forward to a great partnership!
-
-Best regards,
-{account.get('display_name', 'Marketing Team')}"""
-            
-            email_service.send_email(
-                account_id=account['id'],
-                to_email=from_email,
-                subject=f"Re: {outreach['subject']} - Confirmed!",
-                body=confirmation
-            )
-            
-            db.add_email_thread(
-                outreach_id=outreach_id,
-                direction='outbound',
-                subject=f"Re: {outreach['subject']} - Confirmed!",
-                body=confirmation
-            )
-            db.update_outreach(outreach_id, ai_response=confirmation)
-        
-        return {"success": True, "status": "deal_closed", "analysis": analysis, "final_amount": current_offer}
-    
-    # They want more OR are negotiating -> Increase our offer by $50
-    new_offer = current_offer + offer_increment
-    negotiation_rounds += 1
-    
-    # Check if we've reached our max offer
-    if new_offer > max_offer:
-        # We're at max offer - make final offer
-        new_offer = max_offer
-        
-        account = email_service.get_available_account()
-        if account:
-            final_offer_email = f"""I really appreciate your interest in working with us!
-
-After reviewing with our team, I can offer you our maximum budget of ${int(max_offer)} for this collaboration. This is the absolute highest we can go for this campaign.
-
-If this works for you, I'd love to move forward! If not, I completely understand - please let me know either way.
-
-Best regards,
-{account.get('display_name', 'Marketing Team')}"""
-            
-            success, _ = email_service.send_email(
-                account_id=account['id'],
-                to_email=from_email,
-                subject=f"Re: {outreach['subject']}",
-                body=final_offer_email
-            )
-            
-            if success:
-                db.add_email_thread(
-                    outreach_id=outreach_id,
-                    direction='outbound',
-                    subject=f"Re: {outreach['subject']}",
-                    body=final_offer_email
-                )
-                db.update_outreach(
-                    outreach_id,
-                    negotiation_stage='final_offer',
-                    ai_response=final_offer_email,
-                    current_offer=new_offer,
-                    negotiation_rounds=negotiation_rounds
-                )
-        
-        return {
-            "success": True, 
-            "status": "final_offer_sent", 
-            "analysis": analysis,
-            "offer": new_offer,
-            "rounds": negotiation_rounds
-        }
-    
-    # We can still increase - send a new offer
-    requested_amount = analysis.get('requested_amount')
-    
-    # If their requested amount is within our max, we can meet them closer
-    if requested_amount and requested_amount <= max_offer:
-        # Jump closer to their ask (but not all the way)
-        mid_point = (new_offer + requested_amount) / 2
-        new_offer = min(mid_point, max_offer)
-        new_offer = round(new_offer / 50) * 50  # Round to nearest $50
-    
-    account = email_service.get_available_account()
-    if account:
-        negotiation_email = f"""Thank you for your response! I appreciate you sharing your rates.
-
-I've spoken with our team, and we can increase our offer to ${int(new_offer)} for this collaboration. 
-
-This is a competitive rate for the scope of work, and we're flexible on content deliverables if that helps. 
-
-Would this work for you?
-
-Best regards,
-{account.get('display_name', 'Marketing Team')}"""
-        
-        # If they mentioned a specific amount, acknowledge it
-        if requested_amount:
-            negotiation_email = f"""Thank you for your response! I appreciate you sharing that your rate is ${int(requested_amount)}.
-
-I've spoken with our team, and while we can't quite reach ${int(requested_amount)}, we can increase our offer to ${int(new_offer)}.
-
-We believe this is a fair rate for the collaboration, and we're flexible on content format/deliverables if that helps bridge the gap.
-
-Let me know your thoughts!
-
-Best regards,
-{account.get('display_name', 'Marketing Team')}"""
-        
-        success, _ = email_service.send_email(
-            account_id=account['id'],
-            to_email=from_email,
-            subject=f"Re: {outreach['subject']}",
-            body=negotiation_email
+        (success, _), body = send_varied_response(
+            account, from_email, 
+            f"Re: {outreach['subject']}", 
+            "goodbye"
         )
         
         if success:
-            db.add_email_thread(
-                outreach_id=outreach_id,
-                direction='outbound',
-                subject=f"Re: {outreach['subject']}",
-                body=negotiation_email
-            )
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']}", body)
+            db.update_outreach(outreach_id, ai_response=body)
+        
+        return {"success": True, "status": "rejected", "analysis": analysis}
+    
+    # Handle ACCEPTANCE
+    if analysis.get('accepted'):
+        db.update_outreach(outreach_id, negotiation_stage='deal_closed')
+        
+        (success, _), body = send_varied_response(
+            account, from_email,
+            f"Re: {outreach['subject']} - Confirmed!",
+            "acceptance",
+            offer=current_offer
+        )
+        
+        if success:
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']} - Confirmed!", body)
+            db.update_outreach(outreach_id, ai_response=body)
+        
+        return {"success": True, "status": "deal_closed", "final_amount": current_offer}
+    
+    # Handle COUNTER-OFFER / NEGOTIATION
+    creator_ask = analysis.get('requested_amount')
+    negotiation_rounds += 1
+    
+    # Calculate our counter
+    counter = calculate_counter_offer(
+        current_offer, creator_ask, budget_min, max_offer, negotiation_rounds
+    )
+    
+    new_offer = counter['offer']
+    action = counter['action']
+    
+    if action == "accept":
+        # Creator's ask is acceptable - close the deal!
+        db.update_outreach(outreach_id, negotiation_stage='deal_closed')
+        
+        (success, _), body = send_varied_response(
+            account, from_email,
+            f"Re: {outreach['subject']} - Confirmed!",
+            "acceptance",
+            offer=new_offer
+        )
+        
+        if success:
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']} - Confirmed!", body)
             db.update_outreach(
-                outreach_id,
-                negotiation_stage='negotiating',
-                ai_response=negotiation_email,
+                outreach_id, 
+                ai_response=body,
                 current_offer=new_offer,
                 negotiation_rounds=negotiation_rounds
             )
+        
+        return {"success": True, "status": "deal_closed", "final_amount": new_offer}
     
-    return {
-        "success": True, 
-        "status": "negotiating", 
-        "analysis": analysis,
-        "previous_offer": current_offer,
-        "new_offer": new_offer,
-        "rounds": negotiation_rounds,
-        "max_offer": max_offer
-    }
+    elif action == "decline":
+        # Too expensive - politely decline
+        db.update_outreach(outreach_id, negotiation_stage='rejected_over_budget')
+        
+        decline_body = f"""Thanks for sharing your rates!
 
+Unfortunately ${int(creator_ask)} is outside our budget for this campaign (max ${int(max_offer)}).
+
+If you're ever open to collaborating at a lower rate, we'd love to work together. 
+Best of luck with your content!
+
+{account.get('display_name', 'Marketing Team')}"""
+        
+        success, _ = email_service.send_email(
+            account['id'], from_email,
+            f"Re: {outreach['subject']}", decline_body
+        )
+        
+        if success:
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']}", decline_body)
+            db.update_outreach(outreach_id, ai_response=decline_body)
+        
+        return {"success": True, "status": "declined_over_budget", "their_ask": creator_ask, "our_max": max_offer}
+    
+    elif action == "final_offer":
+        # Send our max offer
+        db.update_outreach(outreach_id, negotiation_stage='final_offer')
+        
+        (success, _), body = send_varied_response(
+            account, from_email,
+            f"Re: {outreach['subject']}",
+            "final_offer",
+            offer=new_offer
+        )
+        
+        if success:
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']}", body)
+            db.update_outreach(
+                outreach_id,
+                ai_response=body,
+                current_offer=new_offer,
+                negotiation_rounds=negotiation_rounds
+            )
+        
+        return {"success": True, "status": "final_offer_sent", "offer": new_offer}
+    
+    else:
+        # Normal counter-offer
+        (success, _), body = send_varied_response(
+            account, from_email,
+            f"Re: {outreach['subject']}",
+            "negotiation",
+            offer=new_offer,
+            creator_ask=creator_ask
+        )
+        
+        if success:
+            db.add_email_thread(outreach_id, 'outbound', f"Re: {outreach['subject']}", body)
+            db.update_outreach(
+                outreach_id,
+                negotiation_stage='negotiating',
+                ai_response=body,
+                current_offer=new_offer,
+                negotiation_rounds=negotiation_rounds
+            )
+        
+        return {
+            "success": True, 
+            "status": "negotiating",
+            "previous_offer": current_offer,
+            "new_offer": new_offer,
+            "round": negotiation_rounds
+        }
+
+
+# ============================================================
+# FOLLOW-UP LOGIC
+# ============================================================
+
+def should_send_followup(outreach: Dict) -> bool:
+    """
+    Determine if we should send a follow-up:
+    - Max 2 follow-ups total
+    - Only within 6 hours of last outbound
+    - STOP if ANY reply received
+    """
+    # Check if they've replied - if so, NO follow-ups
+    if outreach.get('status') == 'replied':
+        return False
+    
+    if outreach.get('last_inbound_at'):
+        return False
+    
+    # Check follow-up count
+    followup_count = outreach.get('followup_count', 0) or 0
+    if followup_count >= 2:
+        return False
+    
+    # Check time since last outbound
+    thread_stats = db.get_thread_stats(outreach['id'])
+    last_outbound = thread_stats.get('last_outbound')
+    
+    if not last_outbound:
+        return False
+    
+    # Parse the timestamp
+    try:
+        if isinstance(last_outbound, str):
+            last_time = datetime.fromisoformat(last_outbound.replace('Z', '+00:00'))
+        else:
+            last_time = last_outbound
+        
+        hours_since = (datetime.now() - last_time.replace(tzinfo=None)).total_seconds() / 3600
+        
+        # Send follow-up if 2-6 hours since last message
+        if 2 <= hours_since <= 6:
+            return True
+            
+    except Exception as e:
+        print(f"Error parsing timestamp: {e}")
+    
+    return False
+
+
+def send_followup(outreach: Dict) -> Dict:
+    """Send a follow-up email."""
+    account = email_service.get_available_account()
+    if not account:
+        return {"success": False, "error": "No email account"}
+    
+    followup_count = (outreach.get('followup_count', 0) or 0) + 1
+    
+    followup_templates = [
+        """Hey! Just following up on my previous email about a potential collaboration.
+
+Would love to hear your thoughts when you get a chance!
+
+Best,
+{sender}""",
+        """Hi there! Wanted to bump this up in your inbox.
+
+Let me know if you're interested in discussing a partnership!
+
+Cheers,
+{sender}"""
+    ]
+    
+    body = random.choice(followup_templates).format(
+        sender=account.get('display_name', 'Marketing Team')
+    )
+    
+    success, _ = email_service.send_email(
+        account['id'],
+        outreach['recipient_email'],
+        f"Re: {outreach['subject']}",
+        body
+    )
+    
+    if success:
+        db.add_email_thread(
+            outreach['id'], 'outbound',
+            f"Re: {outreach['subject']}", body
+        )
+        db.update_outreach(
+            outreach['id'],
+            followup_count=followup_count,
+            last_followup_at=datetime.now().isoformat()
+        )
+        return {"success": True, "followup_number": followup_count}
+    
+    return {"success": False, "error": "Send failed"}
+
+
+# ============================================================
+# INBOX CHECKING
+# ============================================================
 
 def check_inbox_for_replies(account: Dict) -> List[Dict]:
-    """Check inbox for new replies to outreach emails."""
+    """Check inbox for new replies - with duplicate prevention."""
     results = []
     
     mail = connect_imap(account['email'], account['smtp_password'])
@@ -440,21 +787,28 @@ def check_inbox_for_replies(account: Dict) -> List[Dict]:
                 _, msg_data = mail.fetch(num, '(RFC822)')
                 msg = email.message_from_bytes(msg_data[0][1])
                 
+                # Get Message-ID for duplicate tracking
+                message_id = msg.get('Message-ID', f"no-id-{num}")
                 from_email = msg.get('From', '')
                 subject = decode_subject(msg.get('Subject', ''))
+                body = extract_email_body(msg)
                 
-                # Check if this is a reply to one of our outreach emails
+                # Check for duplicates
+                body_hash = get_body_hash(body)
+                if db.is_email_processed(message_id, body_hash):
+                    continue  # Already processed
+                
+                # Find matching outreach
                 outreach = find_matching_outreach(from_email, subject)
                 
                 if outreach:
-                    body = extract_email_body(msg)
+                    # Check if this outreach is already in terminal state
+                    if outreach.get('negotiation_stage') in ['deal_closed', 'rejected', 'rejected_over_budget']:
+                        # Mark as processed but don't respond
+                        db.mark_email_processed(message_id, from_email, subject, body_hash)
+                        continue
                     
-                    # Check if we already processed this reply
-                    if outreach.get('reply_content') and body[:100] in outreach.get('reply_content', ''):
-                        continue  # Already processed
-                    
-                    # Process the reply
-                    result = process_reply(outreach, body, from_email)
+                    result = process_reply(outreach, body, from_email, message_id)
                     result['from_email'] = from_email
                     result['subject'] = subject
                     results.append(result)
@@ -471,27 +825,39 @@ def check_inbox_for_replies(account: Dict) -> List[Dict]:
     return results
 
 
+# ============================================================
+# MAIN AUTO-NEGOTIATOR
+# ============================================================
+
 def run_auto_negotiator():
-    """Main function to run auto-negotiation check."""
+    """Main function - check inbox and handle follow-ups."""
     print(f"[{datetime.now()}] Running auto-negotiator...")
     
-    # Get all active email accounts
     accounts = db.get_email_accounts(active_only=True)
     
     all_results = []
+    
+    # 1. Check inboxes for replies
     for account in accounts:
         results = check_inbox_for_replies(account)
         all_results.extend(results)
         
         for result in results:
             status = result.get('status', 'unknown')
-            email = result.get('from_email', 'unknown')
-            print(f"  Processed reply from {email}: {status}")
+            email_addr = result.get('from_email', 'unknown')
+            print(f"  Processed reply from {email_addr}: {status}")
+    
+    # 2. Check for follow-ups needed (only for sent, non-replied outreach)
+    sent_outreach = db.get_outreach_emails(status='sent')
+    for outreach in sent_outreach:
+        if should_send_followup(outreach):
+            result = send_followup(outreach)
+            if result.get('success'):
+                print(f"  Sent follow-up #{result.get('followup_number')} to {outreach['recipient_email']}")
     
     print(f"[{datetime.now()}] Auto-negotiator complete. Processed {len(all_results)} replies.")
     return all_results
 
 
 if __name__ == "__main__":
-    # Test run
     run_auto_negotiator()

@@ -62,8 +62,15 @@ INSTRUCTIONS:
 2. Reference their specific content/channel to show you've done research
 3. Clearly explain the opportunity without being pushy
 4. Mention the budget range to show you're serious
-5. Include a clear call-to-action
-6. Keep it concise (under 200 words for the body)
+5. IMPORTANT: End with a request for them to share:
+   - Their budget expectations/rate
+   - Channel analytics snapshot (impressions, engagement rate)
+   - Typical reach per video
+6. Include a clear call-to-action asking them to reply with this info
+7. Keep it concise (under 200 words for the body)
+
+MUST INCLUDE this type of closing:
+"To help us tailor this opportunity, could you share your rate, a quick analytics snapshot, and your typical video reach? Looking forward to hearing from you!"
 
 OUTPUT FORMAT (JSON only, no markdown):
 {{
@@ -99,9 +106,14 @@ I came across your channel {channel_title} and was impressed by your content. We
 
 {campaign_brief}
 
-Budget: ${budget_min:,.0f} - ${budget_max:,.0f}
+Budget Range: ${budget_min:,.0f} - ${budget_max:,.0f}
 
-Would you be interested in discussing this further?
+To help us tailor this opportunity, could you share:
+- Your rate/budget expectations
+- A quick channel analytics snapshot
+- Your typical video reach
+
+Would love to hear from you!
 
 Best regards,
 {sender_name}"""

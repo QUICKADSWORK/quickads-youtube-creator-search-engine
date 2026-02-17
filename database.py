@@ -548,6 +548,9 @@ def init_email_tables():
                 negotiation_stage TEXT DEFAULT 'initial',
                 current_offer REAL DEFAULT 0,
                 negotiation_rounds INTEGER DEFAULT 0,
+                followup_count INTEGER DEFAULT 0,
+                last_followup_at TIMESTAMP,
+                last_inbound_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
                 FOREIGN KEY (email_account_id) REFERENCES email_accounts(id)
@@ -562,8 +565,21 @@ def init_email_tables():
                 direction TEXT,
                 subject TEXT,
                 body TEXT,
+                message_hash TEXT,
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (outreach_id) REFERENCES outreach_emails(id)
+            )
+        """)
+        
+        # Processed email IDs to prevent duplicates
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS processed_emails (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT UNIQUE,
+                from_email TEXT,
+                subject TEXT,
+                body_hash TEXT,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
@@ -844,6 +860,76 @@ def get_email_thread(outreach_id: int) -> List[Dict]:
             ORDER BY sent_at ASC
         """, (outreach_id,))
         return [dict(row) for row in cursor.fetchall()]
+
+
+def is_email_processed(message_id: str = None, body_hash: str = None) -> bool:
+    """Check if an email has already been processed."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if message_id:
+            cursor.execute("SELECT id FROM processed_emails WHERE message_id = ?", (message_id,))
+            if cursor.fetchone():
+                return True
+        if body_hash:
+            cursor.execute("SELECT id FROM processed_emails WHERE body_hash = ?", (body_hash,))
+            if cursor.fetchone():
+                return True
+        return False
+
+
+def mark_email_processed(message_id: str, from_email: str, subject: str, body_hash: str):
+    """Mark an email as processed to prevent duplicate handling."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT OR IGNORE INTO processed_emails (message_id, from_email, subject, body_hash)
+                VALUES (?, ?, ?, ?)
+            """, (message_id, from_email, subject, body_hash))
+            conn.commit()
+        except:
+            pass  # Ignore duplicates
+
+
+def get_thread_stats(outreach_id: int) -> Dict:
+    """Get stats about an email thread."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Count inbound messages
+        cursor.execute("""
+            SELECT COUNT(*) FROM email_threads 
+            WHERE outreach_id = ? AND direction = 'inbound'
+        """, (outreach_id,))
+        inbound_count = cursor.fetchone()[0]
+        
+        # Count outbound messages
+        cursor.execute("""
+            SELECT COUNT(*) FROM email_threads 
+            WHERE outreach_id = ? AND direction = 'outbound'
+        """, (outreach_id,))
+        outbound_count = cursor.fetchone()[0]
+        
+        # Get last inbound time
+        cursor.execute("""
+            SELECT MAX(sent_at) FROM email_threads 
+            WHERE outreach_id = ? AND direction = 'inbound'
+        """, (outreach_id,))
+        last_inbound = cursor.fetchone()[0]
+        
+        # Get last outbound time
+        cursor.execute("""
+            SELECT MAX(sent_at) FROM email_threads 
+            WHERE outreach_id = ? AND direction = 'outbound'
+        """, (outreach_id,))
+        last_outbound = cursor.fetchone()[0]
+        
+        return {
+            "inbound_count": inbound_count,
+            "outbound_count": outbound_count,
+            "last_inbound": last_inbound,
+            "last_outbound": last_outbound
+        }
 
 
 def update_channel_email(channel_id: str, email: str) -> bool:
