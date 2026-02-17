@@ -470,6 +470,17 @@ def send_varied_response(
 def process_reply(outreach: Dict, reply_body: str, from_email: str, message_id: str) -> Dict:
     """Process a creator's reply with smart negotiation."""
     outreach_id = outreach['id']
+    
+    # CRITICAL: Check terminal state FIRST - never respond to closed/rejected deals
+    if is_terminal_state(outreach):
+        body_hash = get_body_hash(reply_body)
+        db.mark_email_processed(message_id, from_email, outreach.get('subject', ''), body_hash)
+        return {
+            "success": True, 
+            "status": "skipped_terminal", 
+            "reason": f"Deal already {outreach.get('negotiation_stage')}"
+        }
+    
     campaign = db.get_campaign(outreach['campaign_id'])
     
     if not campaign:
@@ -764,98 +775,186 @@ Cheers,
 
 
 # ============================================================
-# INBOX CHECKING
+# INBOX CHECKING - IMPROVED FOR 100% SUCCESS
 # ============================================================
 
+# Terminal states - NEVER send emails to these
+TERMINAL_STATES = ['deal_closed', 'rejected', 'rejected_over_budget', 'declined']
+
+def is_terminal_state(outreach: Dict) -> bool:
+    """Check if outreach is in a terminal state - no more emails should be sent."""
+    stage = outreach.get('negotiation_stage', '')
+    return stage in TERMINAL_STATES
+
+
 def check_inbox_for_replies(account: Dict) -> List[Dict]:
-    """Check inbox for new replies - with duplicate prevention."""
+    """
+    Check inbox for new replies - IMPROVED for 100% detection.
+    - Search last 7 days (not just 24 hours)
+    - Also check UNSEEN emails
+    - Better duplicate handling
+    - Comprehensive logging
+    """
     results = []
+    processed_count = 0
+    skipped_count = 0
+    
+    print(f"  Checking inbox for {account['email']}...")
     
     mail = connect_imap(account['email'], account['smtp_password'])
     if not mail:
+        print(f"  ERROR: Could not connect to IMAP for {account['email']}")
         return results
     
     try:
         mail.select('INBOX')
         
-        # Search for recent emails (last 24 hours)
-        date_since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
-        _, message_numbers = mail.search(None, f'(SINCE {date_since})')
+        # Search for emails from last 7 days (wider window to catch missed ones)
+        date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         
-        for num in message_numbers[0].split():
+        # Search criteria: recent emails OR unseen emails
+        _, message_numbers_recent = mail.search(None, f'(SINCE {date_since})')
+        _, message_numbers_unseen = mail.search(None, '(UNSEEN)')
+        
+        # Combine and dedupe
+        all_nums = set(message_numbers_recent[0].split())
+        all_nums.update(message_numbers_unseen[0].split())
+        
+        print(f"  Found {len(all_nums)} emails to check")
+        
+        for num in all_nums:
+            if not num:
+                continue
+                
             try:
                 _, msg_data = mail.fetch(num, '(RFC822)')
                 msg = email.message_from_bytes(msg_data[0][1])
                 
                 # Get Message-ID for duplicate tracking
-                message_id = msg.get('Message-ID', f"no-id-{num}")
+                message_id = msg.get('Message-ID', f"no-id-{num.decode() if isinstance(num, bytes) else num}")
                 from_email = msg.get('From', '')
                 subject = decode_subject(msg.get('Subject', ''))
                 body = extract_email_body(msg)
                 
-                # Check for duplicates
+                # Skip if empty body
+                if not body or len(body.strip()) < 5:
+                    continue
+                
+                # Check for duplicates using message_id ONLY (not body hash)
+                # Body hash was causing issues with similar replies
                 body_hash = get_body_hash(body)
-                if db.is_email_processed(message_id, body_hash):
-                    continue  # Already processed
+                if db.is_email_processed(message_id, None):  # Check message_id only
+                    skipped_count += 1
+                    continue
                 
                 # Find matching outreach
                 outreach = find_matching_outreach(from_email, subject)
                 
                 if outreach:
-                    # Check if this outreach is already in terminal state
-                    if outreach.get('negotiation_stage') in ['deal_closed', 'rejected', 'rejected_over_budget']:
-                        # Mark as processed but don't respond
+                    outreach_id = outreach['id']
+                    
+                    # CRITICAL: Check terminal state BEFORE processing
+                    if is_terminal_state(outreach):
+                        print(f"    Skipping {from_email} - deal already {outreach.get('negotiation_stage')}")
                         db.mark_email_processed(message_id, from_email, subject, body_hash)
+                        skipped_count += 1
                         continue
                     
+                    # Process the reply
+                    print(f"    Processing reply from {from_email}...")
                     result = process_reply(outreach, body, from_email, message_id)
                     result['from_email'] = from_email
                     result['subject'] = subject
                     results.append(result)
+                    processed_count += 1
+                    print(f"    Result: {result.get('status', 'unknown')}")
                     
             except Exception as e:
-                print(f"Error processing email: {e}")
+                print(f"    Error processing email {num}: {e}")
                 continue
         
         mail.logout()
+        print(f"  Inbox check complete: {processed_count} processed, {skipped_count} skipped")
         
     except Exception as e:
-        print(f"Error checking inbox: {e}")
+        print(f"  ERROR checking inbox: {e}")
     
     return results
 
 
+def get_pending_outreach() -> List[Dict]:
+    """Get all outreach that needs attention (not in terminal state)."""
+    all_outreach = []
+    
+    # Get sent and replied outreach
+    sent = db.get_outreach_emails(status='sent')
+    replied = db.get_outreach_emails(status='replied')
+    
+    for o in sent + replied:
+        if not is_terminal_state(o):
+            all_outreach.append(o)
+    
+    return all_outreach
+
+
 # ============================================================
-# MAIN AUTO-NEGOTIATOR
+# MAIN AUTO-NEGOTIATOR - IMPROVED FOR 100% SUCCESS
 # ============================================================
 
 def run_auto_negotiator():
-    """Main function - check inbox and handle follow-ups."""
-    print(f"[{datetime.now()}] Running auto-negotiator...")
+    """
+    Main function - check inbox and handle follow-ups.
+    IMPROVED: Better logging, terminal state checks, retry logic.
+    """
+    start_time = datetime.now()
+    print(f"\n{'='*60}")
+    print(f"[{start_time}] AUTO-NEGOTIATOR STARTING")
+    print(f"{'='*60}")
     
     accounts = db.get_email_accounts(active_only=True)
+    print(f"Active email accounts: {len(accounts)}")
     
     all_results = []
+    followups_sent = 0
     
     # 1. Check inboxes for replies
+    print(f"\n--- CHECKING INBOXES ---")
     for account in accounts:
-        results = check_inbox_for_replies(account)
-        all_results.extend(results)
-        
-        for result in results:
-            status = result.get('status', 'unknown')
-            email_addr = result.get('from_email', 'unknown')
-            print(f"  Processed reply from {email_addr}: {status}")
+        try:
+            results = check_inbox_for_replies(account)
+            all_results.extend(results)
+        except Exception as e:
+            print(f"  ERROR with {account['email']}: {e}")
     
-    # 2. Check for follow-ups needed (only for sent, non-replied outreach)
-    sent_outreach = db.get_outreach_emails(status='sent')
-    for outreach in sent_outreach:
+    # 2. Check for follow-ups needed (only for non-terminal outreach)
+    print(f"\n--- CHECKING FOLLOW-UPS ---")
+    pending_outreach = get_pending_outreach()
+    print(f"Pending outreach (non-terminal): {len(pending_outreach)}")
+    
+    for outreach in pending_outreach:
+        # Double-check terminal state
+        if is_terminal_state(outreach):
+            continue
+            
+        # Only send follow-up for 'sent' status (not 'replied' - they already responded!)
+        if outreach.get('status') != 'sent':
+            continue
+            
         if should_send_followup(outreach):
             result = send_followup(outreach)
             if result.get('success'):
-                print(f"  Sent follow-up #{result.get('followup_number')} to {outreach['recipient_email']}")
+                followups_sent += 1
+                print(f"  Follow-up #{result.get('followup_number')} → {outreach['recipient_email']}")
     
-    print(f"[{datetime.now()}] Auto-negotiator complete. Processed {len(all_results)} replies.")
+    # Summary
+    elapsed = (datetime.now() - start_time).total_seconds()
+    print(f"\n{'='*60}")
+    print(f"[{datetime.now()}] AUTO-NEGOTIATOR COMPLETE")
+    print(f"  - Replies processed: {len(all_results)}")
+    print(f"  - Follow-ups sent: {followups_sent}")
+    print(f"  - Time elapsed: {elapsed:.1f}s")
+    print(f"{'='*60}\n")
+    
     return all_results
 
 

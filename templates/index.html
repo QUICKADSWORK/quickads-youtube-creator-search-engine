@@ -349,14 +349,20 @@
                     <div class="flex items-center">
                         <div class="w-3 h-3 bg-white rounded-full animate-pulse mr-3"></div>
                         <div>
-                            <p class="font-semibold">Auto-Negotiation Mode: ACTIVE</p>
-                            <p class="text-sm text-green-100">Checking inbox every 5 minutes • AI auto-responds to creators</p>
+                            <p class="font-semibold">🔴 LIVE - Auto-Negotiation Mode: ACTIVE</p>
+                            <p class="text-sm text-green-100">Dashboard refreshes every 30s • Inbox checked every 2 min • AI auto-responds</p>
                         </div>
                     </div>
-                    <button onclick="runAutoNegotiatorNow()" 
-                        class="bg-white text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-all">
-                        Check Now
-                    </button>
+                    <div class="flex space-x-2">
+                        <button onclick="manualRefresh()" 
+                            class="bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-800 transition-all">
+                            🔄 Refresh
+                        </button>
+                        <button onclick="runAutoNegotiatorNow()" 
+                            class="bg-white text-green-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50 transition-all">
+                            📥 Check Inbox
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Outreach Stats -->
@@ -2935,7 +2941,74 @@ emma.lifestyle@gmail.com"></textarea>
         document.addEventListener('DOMContentLoaded', () => {
             loadStats();
             loadFilterOptions();
+            
+            // Start real-time updates
+            startAutoRefresh();
         });
+        
+        // ============================================================
+        // REAL-TIME DASHBOARD UPDATES
+        // ============================================================
+        
+        let autoRefreshInterval = null;
+        let lastDataHash = '';
+        
+        function startAutoRefresh() {
+            // Refresh every 30 seconds
+            autoRefreshInterval = setInterval(async () => {
+                await refreshDashboard();
+            }, 30000);
+            
+            // Also check for new replies every 2 minutes
+            setInterval(async () => {
+                await checkForNewReplies();
+            }, 120000);
+            
+            console.log('Auto-refresh started: Dashboard every 30s, Inbox check every 2m');
+        }
+        
+        async function refreshDashboard() {
+            const activeTab = document.querySelector('.tab-btn.active')?.textContent?.trim() || '';
+            
+            try {
+                // Refresh based on active tab
+                if (activeTab.includes('Campaigns')) {
+                    await loadCampaigns();
+                } else if (activeTab.includes('Emails')) {
+                    await loadEmailAccounts();
+                } else if (activeTab.includes('Mailing')) {
+                    await loadMailingList();
+                }
+                
+                // Always refresh stats
+                await loadStats();
+                
+            } catch (error) {
+                console.error('Auto-refresh error:', error);
+            }
+        }
+        
+        async function checkForNewReplies() {
+            try {
+                const response = await fetch('/api/auto-negotiator/run', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.processed > 0) {
+                    showToast(`${result.processed} new replies processed!`, 'success');
+                    await refreshDashboard();
+                }
+            } catch (error) {
+                console.error('Inbox check error:', error);
+            }
+        }
+        
+        // Manual refresh button
+        function manualRefresh() {
+            showToast('Refreshing...', 'info');
+            refreshDashboard().then(() => {
+                showToast('Dashboard updated');
+            });
+        }
     </script>
 </body>
 </html>
