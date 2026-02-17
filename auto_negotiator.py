@@ -905,57 +905,66 @@ def run_auto_negotiator():
     """
     Main function - check inbox and handle follow-ups.
     IMPROVED: Better logging, terminal state checks, retry logic.
+    Wrapped in try-except to prevent scheduler crashes.
     """
-    start_time = datetime.now()
-    print(f"\n{'='*60}")
-    print(f"[{start_time}] AUTO-NEGOTIATOR STARTING")
-    print(f"{'='*60}")
-    
-    accounts = db.get_email_accounts(active_only=True)
-    print(f"Active email accounts: {len(accounts)}")
-    
-    all_results = []
-    followups_sent = 0
-    
-    # 1. Check inboxes for replies
-    print(f"\n--- CHECKING INBOXES ---")
-    for account in accounts:
+    try:
+        start_time = datetime.now()
+        print(f"\n{'='*60}")
+        print(f"[{start_time}] AUTO-NEGOTIATOR STARTING")
+        print(f"{'='*60}")
+        
+        accounts = db.get_email_accounts(active_only=True)
+        print(f"Active email accounts: {len(accounts)}")
+        
+        all_results = []
+        followups_sent = 0
+        
+        # 1. Check inboxes for replies
+        print(f"\n--- CHECKING INBOXES ---")
+        for account in accounts:
+            try:
+                results = check_inbox_for_replies(account)
+                all_results.extend(results)
+            except Exception as e:
+                print(f"  ERROR with {account['email']}: {e}")
+        
+        # 2. Check for follow-ups needed (only for non-terminal outreach)
+        print(f"\n--- CHECKING FOLLOW-UPS ---")
         try:
-            results = check_inbox_for_replies(account)
-            all_results.extend(results)
+            pending_outreach = get_pending_outreach()
+            print(f"Pending outreach (non-terminal): {len(pending_outreach)}")
+            
+            for outreach in pending_outreach:
+                # Double-check terminal state
+                if is_terminal_state(outreach):
+                    continue
+                    
+                # Only send follow-up for 'sent' status (not 'replied' - they already responded!)
+                if outreach.get('status') != 'sent':
+                    continue
+                    
+                if should_send_followup(outreach):
+                    result = send_followup(outreach)
+                    if result.get('success'):
+                        followups_sent += 1
+                        print(f"  Follow-up #{result.get('followup_number')} → {outreach['recipient_email']}")
         except Exception as e:
-            print(f"  ERROR with {account['email']}: {e}")
-    
-    # 2. Check for follow-ups needed (only for non-terminal outreach)
-    print(f"\n--- CHECKING FOLLOW-UPS ---")
-    pending_outreach = get_pending_outreach()
-    print(f"Pending outreach (non-terminal): {len(pending_outreach)}")
-    
-    for outreach in pending_outreach:
-        # Double-check terminal state
-        if is_terminal_state(outreach):
-            continue
-            
-        # Only send follow-up for 'sent' status (not 'replied' - they already responded!)
-        if outreach.get('status') != 'sent':
-            continue
-            
-        if should_send_followup(outreach):
-            result = send_followup(outreach)
-            if result.get('success'):
-                followups_sent += 1
-                print(f"  Follow-up #{result.get('followup_number')} → {outreach['recipient_email']}")
-    
-    # Summary
-    elapsed = (datetime.now() - start_time).total_seconds()
-    print(f"\n{'='*60}")
-    print(f"[{datetime.now()}] AUTO-NEGOTIATOR COMPLETE")
-    print(f"  - Replies processed: {len(all_results)}")
-    print(f"  - Follow-ups sent: {followups_sent}")
-    print(f"  - Time elapsed: {elapsed:.1f}s")
-    print(f"{'='*60}\n")
-    
-    return all_results
+            print(f"  ERROR in follow-up check: {e}")
+        
+        # Summary
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"\n{'='*60}")
+        print(f"[{datetime.now()}] AUTO-NEGOTIATOR COMPLETE")
+        print(f"  - Replies processed: {len(all_results)}")
+        print(f"  - Follow-ups sent: {followups_sent}")
+        print(f"  - Time elapsed: {elapsed:.1f}s")
+        print(f"{'='*60}\n")
+        
+        return all_results
+        
+    except Exception as e:
+        print(f"CRITICAL ERROR in auto-negotiator: {e}")
+        return []
 
 
 if __name__ == "__main__":

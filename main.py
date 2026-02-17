@@ -49,33 +49,44 @@ def scheduled_scrape():
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
     # Startup
-    db.init_db()
+    try:
+        print("Initializing database...")
+        db.init_db()
+        print("Database initialized.")
+    except Exception as e:
+        print(f"ERROR initializing database: {e}")
     
     # Start scheduler
-    interval_hours = int(os.getenv("SCHEDULER_INTERVAL_HOURS", "1"))
-    scheduler.add_job(
-        scheduled_scrape,
-        trigger=IntervalTrigger(hours=interval_hours),
-        id="youtube_scraper",
-        name="YouTube Channel Scraper",
-        replace_existing=True
-    )
-    
-    # Auto-negotiator runs every 5 minutes to check for replies
-    scheduler.add_job(
-        auto_negotiator.run_auto_negotiator,
-        trigger=IntervalTrigger(minutes=5),
-        id="auto_negotiator",
-        name="Auto Email Negotiator",
-        replace_existing=True
-    )
-    scheduler.start()
-    print(f"Scheduler started: Scraper every {interval_hours}h, Auto-negotiator every 5min")
+    try:
+        interval_hours = int(os.getenv("SCHEDULER_INTERVAL_HOURS", "1"))
+        scheduler.add_job(
+            scheduled_scrape,
+            trigger=IntervalTrigger(hours=interval_hours),
+            id="youtube_scraper",
+            name="YouTube Channel Scraper",
+            replace_existing=True
+        )
+        
+        # Auto-negotiator runs every 5 minutes to check for replies
+        scheduler.add_job(
+            auto_negotiator.run_auto_negotiator,
+            trigger=IntervalTrigger(minutes=5),
+            id="auto_negotiator",
+            name="Auto Email Negotiator",
+            replace_existing=True
+        )
+        scheduler.start()
+        print(f"Scheduler started: Scraper every {interval_hours}h, Auto-negotiator every 5min")
+    except Exception as e:
+        print(f"ERROR starting scheduler: {e}")
     
     yield
     
     # Shutdown
-    scheduler.shutdown()
+    try:
+        scheduler.shutdown()
+    except Exception as e:
+        print(f"ERROR shutting down scheduler: {e}")
 
 
 app = FastAPI(
